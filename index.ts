@@ -2,23 +2,33 @@
  * The AWS extension: what prifly imports. `activate` registers the read-only
  * `aws_*` tools and starts the two background reads (alarms every five
  * minutes, Cost Explorer once a day); `choices` and `launch` answer the
- * launcher "AWS alarms", `panel` the AWS panel. Types come from
- * `@prifly/extension-api` with `import type`, so nothing of it is loaded at
- * run time.
+ * launcher "AWS", whose board holds the accounts, the cost, the alarms and
+ * the day's calls. The extension puts nothing in prifly's status bar and
+ * declares no panel. Types come from `@prifly/extension-api` with
+ * `import type`, so nothing of it is loaded at run time.
  */
 
-import type { ExtensionApi, Launch, LaunchBoard, PanelRequest } from "@prifly/extension-api";
-import { Accounts } from "./accounts";
+import type {
+  ExtensionApi,
+  ExtensionConnectionsApi,
+  Launch,
+  LaunchBoard,
+} from "@prifly/extension-api";
+import { Accounts, PROVIDER } from "./accounts";
 import { AlarmWatch, LAUNCHER, POLL_MS } from "./alarms";
 import { CallLog } from "./calls";
 import { CostStore } from "./cost";
-import { board, launchOf } from "./launch";
-import { answer, type PanelDeps } from "./panel";
+import { type BoardDeps, board, launchOf, SIGN_IN } from "./launch";
 import { awsTools } from "./tools";
 
 const COST_CHECK_MS = 60 * 60 * 1000;
 
-type Running = { watch: AlarmWatch; panel: PanelDeps };
+type Running = {
+  board: BoardDeps;
+  connections: () => ExtensionConnectionsApi | undefined;
+  /** Read again after a key was added. */
+  afterSignIn: () => void;
+};
 
 let running: Running | null = null;
 
@@ -33,18 +43,17 @@ export function activate(api: ExtensionApi): () => void {
   const readAlarms = () => void watch.poll().catch(logFailure("alarms_failed"));
   const readCosts = () => void cost.refreshAll().catch(logFailure("cost_failed"));
   running = {
-    watch,
-    panel: {
+    board: {
       accounts,
       alarms: watch,
       cost,
       calls,
-      connections: () => api.connections,
       titleOf: (session) => api.session?.(session)?.title ?? null,
-      afterSignIn: () => {
-        readAlarms();
-        readCosts();
-      },
+    },
+    connections: () => api.connections,
+    afterSignIn: () => {
+      readAlarms();
+      readCosts();
     },
   };
   // Absent on an older prifly: optional, like every part added after the first version.
@@ -64,17 +73,31 @@ function current(): Running {
   return running;
 }
 
-/** The launcher `alarms`: the alarms in ALARM now, narrowed by what the reader typed. */
-export function choices(_launchId: string, query: string): LaunchBoard {
-  return board(current().watch.alarms(), query);
+/** The launcher `alarms`, the AWS board, narrowed by what the reader typed. */
+export function choices(_launchId: string, query: string): Promise<LaunchBoard> {
+  return board(current().board, query);
 }
 
-/** The session a picked alarm starts. */
-export function launch(_launchId: string, key: string): Launch {
-  return launchOf(current().watch.alarms(), key);
-}
-
-/** What the panel's page asks for at `api/<path>`; answered as JSON. */
-export function panel(_panelId: string, request: PanelRequest): unknown {
-  return answer(current().panel, request);
+/** The session a picked alarm starts; the sign-in row and action open the Add AWS key form. */
+export async function launch(_launchId: string, key: string): Promise<Launch> {
+  const now = current();
+  if (key !== SIGN_IN && !key.startsWith(`${SIGN_IN}:`)) {
+    return launchOf(now.board.alarms.alarms(), key);
+  }
+  const connections = now.connections();
+  if (connections === undefined) return { prompt: "", message: "This prifly has no connections." };
+  // `aws:sign-in:<id>` revives that key; the bare key opens the Add AWS key form.
+  const connection = key.slice(SIGN_IN.length + 1);
+  const result = await connections.signIn(
+    PROVIDER,
+    [],
+    connection === "" ? undefined : { connection },
+  );
+  if (result.ok) now.afterSignIn();
+  return {
+    prompt: "",
+    message: result.ok
+      ? "The AWS key is filed: the board fills in once it is read."
+      : result.message,
+  };
 }

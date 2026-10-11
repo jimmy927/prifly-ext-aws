@@ -10,7 +10,7 @@ import { inner, members, tag } from "./xml";
 
 export const PROVIDER = "aws-keys";
 export const NO_KEY =
-  "No AWS key is filed yet: add one in prifly's Vault → Connections (Add AWS key), or from the AWS panel.";
+  "No AWS key is filed yet: add one in prifly's Vault → Connections (Add AWS key), or from the AWS board.";
 
 const IDENTITY_MS = 5 * 60 * 1000;
 const KEY_MS = 60 * 60 * 1000;

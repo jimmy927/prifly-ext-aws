@@ -1,7 +1,7 @@
 /**
  * Cost Explorer, read once per account per UTC day, and kept in `cost.json`
  * of the extension's folder. Each Cost Explorer call costs $0.01, so nothing
- * but this module calls it: `aws_call` refuses `ce`, `aws_cost` and the panel
+ * but this module calls it: `aws_call` refuses `ce`, `aws_cost` and the board
  * read what was kept.
  *
  * A day's reading is three calls: the month to date by service, the forecast
