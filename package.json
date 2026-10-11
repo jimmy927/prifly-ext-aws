@@ -1,8 +1,8 @@
 {
-  "name": "prifly-ext-template",
+  "name": "prifly-ext-aws",
   "private": true,
   "type": "module",
-  "description": "A prifly extension: a minimal one to start a plugin from.",
+  "description": "A prifly extension: your AWS accounts' resources, alarms and costs, read through the AWS key you filed in prifly's Vault.",
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
@@ -10,7 +10,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
-    "@prifly/extension-api": "link:@prifly/extension-api",
+    "@prifly/extension-api": "git+ssh://git@github.com/jimmy927/prifly-extension-api.git#v0.4.0",
     "@types/bun": "^1.1.14",
     "typescript": "^7.0.2"
   }

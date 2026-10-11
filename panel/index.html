@@ -3,24 +3,76 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Template</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        font-family: system-ui, sans-serif;
+    <title>AWS</title>
+    <link rel="stylesheet" href="style.css" />
+    <script>
+      // Before the first paint: the window says light or dark in the query.
+      if (new URLSearchParams(location.search).get("theme") === "dark") {
+        document.documentElement.classList.add("dark");
       }
-      body {
-        margin: 1rem;
-      }
-      li {
-        margin: 0.25rem 0;
-      }
-    </style>
+    </script>
   </head>
   <body>
-    <h1>Template things</h1>
-    <p id="error" hidden></p>
-    <ul id="things"></ul>
+    <div class="app">
+      <div class="bar">
+        <h1>AWS</h1>
+        <span class="lbl">Account</span>
+        <fieldset class="group" id="account" disabled></fieldset>
+        <button type="button" class="plain" id="add" disabled>Add AWS key</button>
+        <span class="grow"></span>
+        <span class="lbl" id="stamp">Reading AWS…</span>
+        <button type="button" class="plain" id="reload" disabled>Refresh alarms</button>
+      </div>
+
+      <div id="said" class="line" hidden></div>
+
+      <div class="card" id="empty" hidden>
+        <div class="empty">
+          <h2>No AWS key is filed yet</h2>
+          <p>
+            Add an access key in Vault → Connections → Add AWS key. prifly checks it with STS
+            GetCallerIdentity and keeps the secret sealed; this panel and the sessions' tools only
+            ever see the account and the answers.
+          </p>
+          <button type="button" class="plain" id="addEmpty" disabled>Add AWS key</button>
+        </div>
+      </div>
+
+      <div id="main">
+        <div class="card">
+          <h2>Accounts</h2>
+          <div class="sub">
+            The AWS keys filed in Vault → Connections. prifly signs every call; this panel never sees
+            a secret.
+          </div>
+          <div id="accounts"></div>
+        </div>
+
+        <div id="tiles" class="tiles"></div>
+
+        <div class="cols">
+          <div class="card">
+            <h2>Cost by service, month to date</h2>
+            <div class="sub" id="costSub"></div>
+            <div id="cost"></div>
+          </div>
+          <div class="card">
+            <h2>CloudWatch alarms in ALARM</h2>
+            <div class="sub" id="alarmsSub"></div>
+            <div id="alarms"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Calls from sessions today</h2>
+          <div class="sub">
+            What <span class="mono">aws_call</span> sent. Version 1 is read-only: reads run at once;
+            anything that writes, reveals a secret or costs money is refused.
+          </div>
+          <div id="calls"></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="app.js"></script>
   </body>
 </html>

@@ -68,8 +68,21 @@ export type FakeConnections = {
   connections: ExtensionConnectionsApi;
   endpoint: FakeTokenEndpoint;
   accounts: FakeAccount[];
-  /** Every request `fetch` sent to the provider, its `Authorization` header set. */
+  /** Every request `fetch` sent to the provider, its `Authorization` header set (not for aws-keys). */
   requests: Request[];
+  /** The same requests as the plugin sent them, with the `region` and `service` prifly would sign for. */
+  sent: SentRequest[];
+};
+
+/** One call of `api.connections.fetch`, as the plugin made it. */
+export type SentRequest = {
+  connection: string;
+  url: string;
+  method: string;
+  body: string;
+  target: string | null;
+  region: string | undefined;
+  service: string | undefined;
 };
 
 const NO_PROVIDER: FakeProvider = () => new Response("no fake provider", { status: 404 });
@@ -90,6 +103,7 @@ export function fakeConnections(
   const accounts = [...(options.accounts ?? [])];
   const endpoint = new FakeTokenEndpoint();
   const requests: Request[] = [];
+  const sent: SentRequest[] = [];
   const provider = options.provider ?? NO_PROVIDER;
 
   const find = (id: string): FakeAccount => {
@@ -112,15 +126,29 @@ export function fakeConnections(
   const connections: ExtensionConnectionsApi = {
     list: (wanted) =>
       accounts.filter((each) => wanted === undefined || each.provider === wanted).map(view),
-    async fetch(id, request, _options?: ExtensionFetchOptions) {
+    async fetch(id, request, fetchOptions?: ExtensionFetchOptions) {
       const account = find(id);
       const token = endpoint.issue(id);
       if (token === null) return needsSignIn(account);
-      // Two calls: Bun types a string and a Request as separate overloads of the constructor.
-      const sent = typeof request === "string" ? new Request(request) : new Request(request);
-      sent.headers.set("Authorization", `Bearer ${token}`);
-      requests.push(sent);
-      return await provider(new Request(sent));
+      const init: RequestInit = {
+        ...(fetchOptions?.method === undefined ? {} : { method: fetchOptions.method }),
+        ...(fetchOptions?.headers === undefined ? {} : { headers: fetchOptions.headers }),
+        ...(fetchOptions?.body === undefined ? {} : { body: fetchOptions.body }),
+      };
+      const made = typeof request === "string" ? new Request(request, init) : new Request(request);
+      // An aws-keys request is signed by prifly, not given a bearer token.
+      if (account.provider !== "aws-keys") made.headers.set("Authorization", `Bearer ${token}`);
+      requests.push(made);
+      sent.push({
+        connection: id,
+        url: made.url,
+        method: made.method,
+        body: await made.clone().text(),
+        target: made.headers.get("x-amz-target"),
+        region: fetchOptions?.region,
+        service: fetchOptions?.service,
+      });
+      return await provider(new Request(made));
     },
     async token(id) {
       const account = find(id);
@@ -150,7 +178,7 @@ export function fakeConnections(
       return { ok: true, connection: account.id, account: account.account };
     },
   };
-  return { connections, endpoint, accounts, requests };
+  return { connections, endpoint, accounts, requests, sent };
 }
 
 /** What the extension did with the fake api, to look at in a test. */
@@ -212,6 +240,7 @@ export function fakeApi(
     start: async () => ({ started: false, reason: "A fake api starts no session." }),
     snooze: () => undefined,
     dialog: async () => null,
+    openUrl: async () => false,
   };
   const callTool: FakeApi["callTool"] = (name, args, pick = null) => {
     const tool = tools.find((each) => each.name === name);
@@ -220,6 +249,7 @@ export function fakeApi(
       session: "fake-session",
       pick: async () => pick,
       signal: new AbortController().signal,
+      scratchpad: process.cwd(),
     };
     return tool.call(args, ctx);
   };

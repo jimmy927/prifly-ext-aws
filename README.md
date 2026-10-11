@@ -1,70 +1,62 @@
-# prifly-ext-template
+# prifly-ext-aws
 
-A minimal prifly extension to start a plugin from: one MCP tool that uses a
-connected account, one launch board, one panel, and tests of each against a
-fake `api`.
+Your AWS accounts in prifly, read through the access key you filed in prifly's
+Vault → Connections (Add AWS key). prifly signs every request with AWS
+Signature Version 4 inside the host: this extension never holds a secret, and
+needs no `aws` CLI.
 
-## Start a plugin from it
+**Read-only.** Nothing here changes AWS. Every call off the allowlist is
+refused with a message naming the rule.
 
-1. Copy the folder to a repository of its own, beside your prifly checkout:
+## What it gives you
 
-   ```sh
-   cp -r ~/src/prifly/templates/prifly-ext-template ~/src/prifly-ext-<name>
-   cd ~/src/prifly-ext-<name> && git init -b main
-   ```
+- **Tools for every session** (`mcp__prifly__aws_*`):
+  - `aws_whoami`: the keys filed, whether each still works, and the IAM identity it is (STS `GetCallerIdentity`, kept five minutes).
+  - `aws_call { service, action, params?, region?, account? }`: one read-only API call. `account` is a connection id, an account id or an alias (default: the only or first key); `region` defaults to `eu-north-1`. The reply is text (XML or JSON), cut to about 40 kB with the `NextToken`/`Marker` to page on. A key AWS no longer accepts comes back as text telling the reader to re-check or re-add it.
+  - `aws_cost { account? }`: the cached daily Cost Explorer reading. Never a live call.
+- **The launcher "AWS alarms"**: one item per CloudWatch alarm in ALARM across your accounts. A picked alarm starts a session that names the alarm, account, region and metric and investigates with `aws_call` (`GetMetricData` around the state change, logs `FilterLogEvents`).
+- **The panel "AWS"**: accounts and the age of each access key (a "rotate" pill over 90 days; "unknown" when IAM will not say), month-to-date cost by service with the forecast, the alarms in ALARM, and every call sessions made today, refusals included.
+- **A glowing launcher button** while any alarm is in ALARM.
 
-2. Rename it: `id`, `name` and `description` in `prifly-extension.json`,
-   `name` in `package.json`, and the tool's `template_` prefix in
-   `whoami-tool.ts` (a tool name must be unique across every extension).
+## What `aws_call` allows
 
-3. Get the types. They come from `@prifly/extension-api`, prifly's
-   `packages/extension-api`. Until it is published, link it once per machine
-   from your prifly checkout, then install:
+| | |
+|---|---|
+| Runs | `Describe*`, `List*`, `Get*`, `Search*`, `Lookup*`, `BatchGet*`; DynamoDB `Query` and `Scan`; Logs `FilterLogEvents` |
+| Refused: reveals a secret | any `Get*` whose name has Secret, Password, Token, Credential, AccessDetails, PrivateKey or KeyPair; every STS action but `GetCallerIdentity`; SSM `GetParameter*` with `WithDecryption`; EC2 `DescribeInstanceAttribute` for `userData` |
+| Refused: costs money | every Cost Explorer (`ce`) action. Cost Explorer is read once per account per day by the extension itself (3 calls, about $0.03) |
+| Refused: a write | everything else |
+| Redacted in replies | Lambda `Environment` variables, ECS container `environment` and `secrets`, a Lambda's signed code link, EC2 launch template `userData`: shown as `[redacted by prifly]` |
 
-   ```sh
-   (cd ~/src/prifly/packages/extension-api && bun link)
-   bun install
-   ```
+Services: `sts`, `ec2`, `iam`, `rds`, `elasticloadbalancing`, `sns`, `cloudformation`, `cloudwatch`, `logs`, `dynamodb`, `ecs`; `s3` (`ListBuckets`, `ListObjectsV2`, `GetBucketLocation`); `lambda` (`ListFunctions`, `GetFunction`). An unknown service is refused with this list.
 
-   Once it is on npm, replace `"link:@prifly/extension-api"` in
-   `package.json` with its version.
+## Background reads
 
-4. Commit `bun.lock`. prifly installs a cloned extension's dependencies
-   itself, with `bun install --frozen-lockfile --production --ignore-scripts`,
-   when it clones it and when an update moves it: what the code imports at
-   run time goes under `dependencies`, tooling under `devDependencies`, and
-   the lock must match `package.json`. Install scripts (`postinstall` and the
-   like, yours and your dependencies') are never run, so pick dependencies
-   that work without them.
+- **Alarms.** Once a day, per account, `ec2 DescribeRegions` and one `cloudwatch DescribeAlarms` per region find the regions that have alarms. Every five minutes only those regions are asked for `StateValue=ALARM`.
+- **Cost.** Once per account per UTC day: `GetCostAndUsage` (month to date, grouped by service, unblended), `GetCostForecast` to month end, and `GetCostAndUsage` for the same days of last month. Kept in `cost.json` in the extension's folder. If the key may not read Cost Explorer, or it is not enabled for the account, a note is kept instead and the panel shows it in place of the cost tiles; the next try is tomorrow.
+- **Key age.** IAM `ListAccessKeys` and `GetAccessKeyLastUsed`. prifly does not say which access key a connection holds, so it is the active one IAM saw used last.
 
-5. Try it in prifly: link the folder into the extensions folder and enable it
-   in the Extensions dialog.
+Kept in the extension's folder: `cost.json`, `alarm-regions.json` and `calls.jsonl` (the call log, 30 days).
 
-   ```sh
-   ln -s ~/src/prifly-ext-<name> ~/.local/share/prifly/extensions/<name>
-   ```
+## Develop
 
-   A linked extension is your own checkout: prifly never updates it or
-   installs into it.
+```sh
+bun install
+bun test && bun run typecheck && bun run check
+```
 
-## Checks
-
-`bun test`, `bun run typecheck` and `bun run check` (biome: 500 lines per
-file, 120 per function, cognitive complexity 15, no `any`, no `!`).
-
-## What is where
+The types come from `@prifly/extension-api`, at a tag of `jimmy927/prifly-extension-api`.
 
 | File | What it is |
 |---|---|
-| `prifly-extension.json` | The manifest: `connections` (the accounts it uses and why), a `launch`er and a `panel` |
-| `index.ts` | What prifly imports: `activate(api)` registers the tool; `choices`, `launch` and `panel` answer the launcher and the panel |
-| `whoami-tool.ts` | The MCP tool, `mcp__prifly__template_whoami`: calls Microsoft Graph through `api.connections.fetch`, so prifly holds the token |
-| `things.ts` | The board's items and the session a picked one starts |
-| `panel/` | The panel's page; it fetches `api/things`, answered by `panel` in `index.ts` |
-| `test/fake-api.ts` | A fake `api` that records what the extension shows, logs and registers, and a fake `api.connections` over a fake token endpoint — copy it as it is |
-| `test/index.test.ts` | Tests of the tool, the launcher and the panel against the fakes |
-
-Import prifly's types with `import type`: they are erased, so the host never
-needs the package to run the extension. Everything added to the api after
-its first version is optional (`api.tools?.register`, `api.connections?.list`):
-call it that way, and the extension still loads on an older prifly.
+| `aws.ts` | The wire shapes (Query, JSON, REST), the service table, `send` through `api.connections.fetch` |
+| `allowlist.ts` | Pure: what `aws_call` may send, which rule refuses the rest, the redaction of replies |
+| `tools.ts` | `aws_whoami`, `aws_call`, `aws_cost`; trimming and paging |
+| `accounts.ts` | The filed keys, which one a call means, identity and key age |
+| `cost.ts` | The once-a-day Cost Explorer reading and its note |
+| `alarms.ts` | The daily region sweep, the five-minute poll, the launcher glow |
+| `launch.ts` | The alarm board and the session a picked alarm starts |
+| `calls.ts` | The 30-day call log |
+| `panel.ts` | `api/accounts`, `api/cost`, `api/alarms`, `api/calls`, `api/sign-in` |
+| `panel/` | The page: `index.html`, `app.js`, `format.js`, `style.css` |
+| `test/fake-aws.ts` | A fake `aws-keys` connection answering canned XML and JSON, recording `region` and `service` |
