@@ -322,7 +322,40 @@ test("sign-in opens prifly's Add AWS key form and reads again afterwards", async
     const out = await module.launch?.("alarms", SIGN_IN, "", { again: false });
     expect(out).toMatchObject({ prompt: "", message: expect.stringContaining("filed") });
     expect(aws.accounts.map((each) => each.provider)).toEqual(["aws-keys"]);
+    // The fire-and-forget reads (alarm sweep, cost) start once the key is filed.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(aws.sent.some((each) => each.service === "ec2")).toBe(true);
   } finally {
     stop?.();
   }
+});
+
+test("a signed-out key's row signs that connection in again, and reads afterwards", async () => {
+  const aws = fakeAws({ "sts:GetCallerIdentity": IDENTITY, "ec2:DescribeRegions": xml("<r/>") }, [
+    KEY,
+  ]);
+  aws.endpoint.revoke("aws-1");
+  const fake = fakeApi({ folder, connections: aws.connections });
+  const stop = await module.activate(fake.api);
+  try {
+    expect(aws.connections.list("aws-keys")[0]?.state).toBe("needs-sign-in");
+    const out = await module.launch?.("alarms", `${SIGN_IN}:aws-1`, "", { again: false });
+    expect(out).toMatchObject({ prompt: "" });
+    expect(aws.connections.list("aws-keys")).toHaveLength(1);
+    expect(aws.connections.list("aws-keys")[0]?.state).toBe("ok");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(aws.sent.some((each) => each.service === "ec2")).toBe(true);
+  } finally {
+    stop?.();
+  }
+});
+
+test("a key that is signed in but cannot say who it is gets an informing row, not a sign-in", async () => {
+  const { deps } = setup({ "sts:GetCallerIdentity": xmlError("Throttling", "slow down", 400) });
+  const out = await board(deps, "");
+  const row = out.items.find((each) => each.group === "accounts");
+  expect(row?.key).toBe("aws:account:aws-1");
+  expect(row?.tone).toBe("warning");
+  expect(row?.detail).toContain("Throttling");
+  expect(out.actions).toBeUndefined();
 });

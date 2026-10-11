@@ -103,6 +103,17 @@ async function accountItems(deps: BoardDeps): Promise<LaunchChoice[]> {
     deps.accounts.list().map(async (each): Promise<LaunchChoice> => {
       const parsed = parseAccount(each.account);
       const identity = await deps.accounts.identity(each);
+      if (typeof identity === "string" && each.state === "ok") {
+        // Signed in, but AWS would not say who: a failure to look at, not a key to sign in.
+        return {
+          key: `${INFO}account:${each.id}`,
+          title: parsed.name,
+          group: "accounts",
+          detail: `${parsed.accountId} · ${identity}`,
+          sub: "Could not read who this key is",
+          tone: "warning",
+        };
+      }
       if (typeof identity === "string" || each.state !== "ok") {
         return {
           key: `${SIGN_IN}:${each.id}`,
