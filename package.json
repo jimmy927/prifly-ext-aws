@@ -1,0 +1,17 @@
+{
+  "name": "prifly-ext-template",
+  "private": true,
+  "type": "module",
+  "description": "A prifly extension: a minimal one to start a plugin from.",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@prifly/extension-api": "link:@prifly/extension-api",
+    "@types/bun": "^1.1.14",
+    "typescript": "^7.0.2"
+  }
+}

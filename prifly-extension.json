@@ -1,0 +1,33 @@
+{
+  "id": "template",
+  "name": "Template",
+  "description": "A minimal prifly extension to start a plugin from: one MCP tool, one launch board, one panel.",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "connections": [
+    {
+      "provider": "microsoft",
+      "scopes": ["User.Read"],
+      "why": "Reads your name, to show which account the template's tool uses."
+    }
+  ],
+  "launch": [
+    {
+      "id": "things",
+      "label": "Template things",
+      "icon": "box",
+      "description": "Start a session from one of the template's things",
+      "searchPlaceholder": "Search things"
+    }
+  ],
+  "panels": [
+    {
+      "id": "things",
+      "label": "Template",
+      "icon": "box",
+      "description": "The template's things, in a window of its own",
+      "folder": "panel",
+      "page": "index.html"
+    }
+  ]
+}
