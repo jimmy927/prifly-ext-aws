@@ -113,7 +113,11 @@ export class AlarmWatch {
     }
     for (const connection of connections) {
       if (connection.state === "ok") await this.pollAccount(connection);
-      else this.problems.set(connection.id, "The key needs signing in again.");
+      else {
+        // Its last-known alarms would be stale, and would keep the launcher glowing.
+        this.forget(connection.id, () => true);
+        this.problems.set(connection.id, "The key needs signing in again.");
+      }
     }
     this.readAt = this.accounts.now();
     const count = this.alarms().length;
@@ -128,9 +132,19 @@ export class AlarmWatch {
     this.problems.delete(connection.id);
     const regions = await this.known(connection);
     if (regions === null) return;
+    // A region the sweep dropped has no alarms left: forget what it held.
+    this.forget(connection.id, (region) => !regions.includes(region));
     for (const region of regions) {
       const found = await this.inRegion(connection, region);
       if (found !== null) this.rows.set(`${connection.id}|${region}`, found);
+    }
+  }
+
+  /** Drop the kept rows of `connection` whose region `gone` says so. */
+  private forget(connection: string, gone: (region: string) => boolean): void {
+    for (const key of [...this.rows.keys()]) {
+      const [id, region = ""] = key.split("|");
+      if (id === connection && gone(region)) this.rows.delete(key);
     }
   }
 

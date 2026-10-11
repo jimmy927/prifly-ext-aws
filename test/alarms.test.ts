@@ -113,6 +113,32 @@ test("the five-minute poll asks only the remembered regions and only for ALARM",
   expect(alarmCalls()).toHaveLength(5);
 });
 
+test("an alarm deleted while in ALARM disappears when the next sweep drops its region", async () => {
+  let inAlarm: Record<string, string[]> = { "eu-north-1": ["a"] };
+  const { watch, flags } = setup({
+    "cloudwatch:DescribeAlarms": (request, body) => alarmsByRegion(inAlarm)(request, body),
+  });
+  await watch.poll();
+  expect(watch.alarms()).toHaveLength(1);
+  inAlarm = {};
+  clock = Date.parse("2026-10-12T08:00:00Z");
+  await watch.poll();
+  expect(watch.alarms()).toEqual([]);
+  expect(flags.at(-1)).toBeNull();
+});
+
+test("a key that needs signing in loses its listed alarms and the glow", async () => {
+  const { watch, fake, flags } = setup({
+    "cloudwatch:DescribeAlarms": alarmsByRegion({ "eu-north-1": ["a"] }),
+  });
+  await watch.poll();
+  expect(flags.at(-1)).not.toBeNull();
+  fake.endpoint.revoke("aws-1");
+  await watch.poll();
+  expect(watch.alarms()).toEqual([]);
+  expect(flags.at(-1)).toBeNull();
+});
+
 test("a new day sweeps again", async () => {
   const { watch, fake } = setup({
     "cloudwatch:DescribeAlarms": alarmsByRegion({ "eu-north-1": ["a"] }),
