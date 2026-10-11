@@ -24,7 +24,7 @@
     {
       "id": "aws",
       "label": "AWS",
-      "icon": "cloud",
+      "icon": "aws",
       "description": "Your AWS accounts, key age, month-to-date cost, alarms in ALARM and the calls sessions made",
       "folder": "panel",
       "page": "index.html"
