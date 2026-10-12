@@ -1,5 +1,5 @@
 /**
- * Just enough XML for the Query protocol's replies: the few facts the panel
+ * Just enough XML for the Query protocol's replies: the few facts the board
  * needs are cut out with small regexes, and everything else is handed to the
  * session as the text AWS sent. No parser dependency.
  */

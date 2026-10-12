@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { LauncherFlag } from "@prifly/extension-api";
 import { Accounts } from "../accounts";
 import { AlarmWatch, parseAlarms } from "../alarms";
-import { board, launchOf } from "../launch";
+import { keyOf, launchOf } from "../launch";
 import { type Canned, fakeAws, xml, xmlError } from "./fake-aws";
 
 let folder = "";
@@ -175,30 +175,13 @@ test("an account whose alarms cannot be read shows none, and a signed-out key is
   expect(watch.problemOf("aws-1")).toContain("signing in again");
 });
 
-test("the launcher's board has one item per alarm, one column per account, and narrows to what is typed", async () => {
-  const { watch } = setup({
-    "cloudwatch:DescribeAlarms": alarmsByRegion({
-      "eu-north-1": ["odi-prod-5xx-rate", "rds-free-storage-low"],
-    }),
-  });
-  await watch.poll();
-  const all = board(watch.alarms(), "");
-  expect(all.columns).toEqual([{ id: "aws-1", name: "artemis-prod" }]);
-  expect(all.items.map((each) => each.title)).toEqual([
-    "odi-prod-5xx-rate",
-    "rds-free-storage-low",
-  ]);
-  expect(board(watch.alarms(), "5xx").items).toHaveLength(1);
-  expect(board([], "")).toEqual({ columns: [], items: [] });
-});
-
 test("a picked alarm starts a session naming the alarm, account, region and metric", async () => {
   const { watch } = setup({
     "cloudwatch:DescribeAlarms": alarmsByRegion({ "eu-north-1": ["rds-free-storage-low"] }),
   });
   await watch.poll();
-  const picked = board(watch.alarms(), "").items[0];
-  const launch = launchOf(watch.alarms(), picked?.key ?? "");
+  const picked = watch.alarms()[0];
+  const launch = launchOf(watch.alarms(), picked === undefined ? "" : keyOf(picked));
   expect(launch.prompt).toContain("rds-free-storage-low");
   expect(launch.prompt).toContain("artemis-prod");
   expect(launch.prompt).toContain("eu-north-1");

@@ -1,8 +1,8 @@
 {
   "id": "aws",
   "name": "AWS",
-  "description": "Your AWS accounts in prifly, read-only: resources, CloudWatch alarms and a daily cost reading, through the access key filed in Vault → Connections. Tools for every session, an alarm board to start an investigation from, and a panel. prifly signs every call; the extension never sees a secret.",
-  "version": "0.1.0",
+  "description": "Your AWS accounts in prifly, read-only: resources, CloudWatch alarms and a daily cost reading, through the access key filed in Vault → Connections. Tools for every session and a launch board with your accounts, cost, alarms and the calls sessions made; an alarm there starts an investigation. Nothing in the status bar. prifly signs every call; the extension never sees a secret.",
+  "version": "0.2.0",
   "main": "index.ts",
   "prompt": "prompt.md",
   "connections": [
@@ -14,20 +14,10 @@
   "launch": [
     {
       "id": "alarms",
-      "label": "AWS alarms",
-      "icon": "alert",
-      "description": "CloudWatch alarms in ALARM across your AWS accounts. A session starts knowing the alarm and investigates it with read-only AWS calls.",
-      "searchPlaceholder": "Filter by alarm, account or region"
-    }
-  ],
-  "panels": [
-    {
-      "id": "aws",
       "label": "AWS",
-      "icon": "cloud",
-      "description": "Your AWS accounts, key age, month-to-date cost, alarms in ALARM and the calls sessions made",
-      "folder": "panel",
-      "page": "index.html"
+      "icon": "aws",
+      "description": "Your AWS accounts, key age, month-to-date cost, CloudWatch alarms in ALARM and the calls sessions made today. Picking an alarm starts a session that investigates it with read-only AWS calls.",
+      "searchPlaceholder": "Filter by account, service, alarm or region"
     }
   ]
 }

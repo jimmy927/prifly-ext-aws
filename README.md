@@ -14,9 +14,9 @@ refused with a message naming the rule.
   - `aws_whoami`: the keys filed, whether each still works, and the IAM identity it is (STS `GetCallerIdentity`, kept five minutes).
   - `aws_call { service, action, params?, region?, account? }`: one read-only API call. `account` is a connection id, an account id or an alias (default: the only or first key); `region` defaults to `eu-north-1`. The reply is text (XML or JSON), cut to about 40 kB with the `NextToken`/`Marker` to page on. A key AWS no longer accepts comes back as text telling the reader to re-check or re-add it.
   - `aws_cost { account? }`: the cached daily Cost Explorer reading. Never a live call.
-- **The launcher "AWS alarms"**: one item per CloudWatch alarm in ALARM across your accounts. A picked alarm starts a session that names the alarm, account, region and metric and investigates with `aws_call` (`GetMetricData` around the state change, logs `FilterLogEvents`).
-- **The panel "AWS"**: accounts and the age of each access key (a "rotate" pill over 90 days; "unknown" when IAM will not say), month-to-date cost by service with the forecast, the alarms in ALARM, and every call sessions made today, refusals included.
+- **The launch board "AWS"**, in four sections: Accounts (who each key is and the age of its access key, flagged to rotate over 90 days, "unknown" when IAM will not say), Cost this month (by service, with the forecast), Alarms in ALARM (one item per CloudWatch alarm across your accounts) and Calls from sessions today (refusals included). A picked alarm starts a session that names the alarm, account, region and metric and investigates with `aws_call` (`GetMetricData` around the state change, logs `FilterLogEvents`); the other rows only inform. With no key filed the board's one row says so and its "Add AWS key" action opens prifly's form. Loading, empty and error states are the board's own.
 - **A glowing launcher button** while any alarm is in ALARM.
+- **Nothing in prifly's status bar**: the extension declares no panel and shows no status-bar item.
 
 ## What `aws_call` allows
 
@@ -33,7 +33,7 @@ Services: `sts`, `ec2`, `iam`, `rds`, `elasticloadbalancing`, `sns`, `cloudforma
 ## Background reads
 
 - **Alarms.** Once a day, per account, `ec2 DescribeRegions` and one `cloudwatch DescribeAlarms` per region find the regions that have alarms. Every five minutes only those regions are asked for `StateValue=ALARM`.
-- **Cost.** Once per account per UTC day: `GetCostAndUsage` (month to date, grouped by service, unblended), `GetCostForecast` to month end, and `GetCostAndUsage` for the same days of last month. Kept in `cost.json` in the extension's folder. If the key may not read Cost Explorer, or it is not enabled for the account, a note is kept instead and the panel shows it in place of the cost tiles; the next try is tomorrow.
+- **Cost.** Once per account per UTC day: `GetCostAndUsage` (month to date, grouped by service, unblended), `GetCostForecast` to month end, and `GetCostAndUsage` for the same days of last month. Kept in `cost.json` in the extension's folder. If the key may not read Cost Explorer, or it is not enabled for the account, a note is kept instead and the board shows it in place of the cost row's figures; the next try is tomorrow.
 - **Key age.** IAM `ListAccessKeys` and `GetAccessKeyLastUsed`. prifly does not say which access key a connection holds, so it is the active one IAM saw used last.
 
 Kept in the extension's folder: `cost.json`, `alarm-regions.json` and `calls.jsonl` (the call log, 30 days).
@@ -55,8 +55,6 @@ The types come from `@prifly/extension-api`, at a tag of `jimmy927/prifly-extens
 | `accounts.ts` | The filed keys, which one a call means, identity and key age |
 | `cost.ts` | The once-a-day Cost Explorer reading and its note |
 | `alarms.ts` | The daily region sweep, the five-minute poll, the launcher glow |
-| `launch.ts` | The alarm board and the session a picked alarm starts |
+| `launch.ts` | The board (accounts, cost, alarms, calls) and the session a picked alarm starts |
 | `calls.ts` | The 30-day call log |
-| `panel.ts` | `api/accounts`, `api/cost`, `api/alarms`, `api/calls`, `api/sign-in` |
-| `panel/` | The page: `index.html`, `app.js`, `format.js`, `style.css` |
 | `test/fake-aws.ts` | A fake `aws-keys` connection answering canned XML and JSON, recording `region` and `service` |

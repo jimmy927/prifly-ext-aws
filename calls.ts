@@ -1,7 +1,7 @@
 /**
  * The call log: every `aws_call` a session made, refusals included, one JSON
  * line each in `calls.jsonl` of the extension's folder, kept 30 days. The
- * panel's "Calls from sessions today" reads it.
+ * board's "Calls from sessions today" section reads it.
  */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,7 +23,7 @@ export type CallEntry = {
   action: string;
   region: string;
   kind: CallKind;
-  /** The words for the panel: "Read", "Refused: read-only", "Failed: AccessDenied". */
+  /** The words for the board: "Read", "Refused: read-only", "Failed: AccessDenied". */
   outcome: string;
 };
 

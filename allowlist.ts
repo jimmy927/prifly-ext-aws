@@ -16,7 +16,7 @@ export type Rule = "secret" | "cost" | "write";
 
 export type Verdict = { allowed: true } | { allowed: false; rule: Rule; message: string };
 
-/** The word a refusal gets in the call log and on the panel. */
+/** The word a refusal gets in the call log and on the board. */
 export const REFUSED_OUTCOME: Record<Rule, string> = {
   write: "Refused: read-only",
   secret: "Refused: would reveal a secret",
