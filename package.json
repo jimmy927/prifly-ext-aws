@@ -1,6 +1,7 @@
 {
   "name": "prifly-ext-aws",
   "private": true,
+  "license": "FSL-1.1-ALv2",
   "type": "module",
   "description": "A prifly extension: your AWS accounts' resources, alarms and costs, read through the AWS key you filed in prifly's Vault.",
   "scripts": {
