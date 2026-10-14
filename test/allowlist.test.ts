@@ -1,25 +1,31 @@
 import { expect, test } from "bun:test";
 import { judge, REDACTED, redact } from "../allowlist";
 
-type Row = [string, string, Record<string, unknown>, "allowed" | "secret" | "cost" | "write"];
+type Row = [string, string, Record<string, unknown>, "read" | "secret" | "cost" | "write"];
 
 const TABLE: Row[] = [
   // Reads by prefix.
-  ["ec2", "DescribeInstances", {}, "allowed"],
-  ["iam", "ListAccessKeys", {}, "allowed"],
-  ["iam", "GetAccessKeyLastUsed", { AccessKeyId: "AKIAEXAMPLE" }, "allowed"],
-  ["cloudwatch", "GetMetricData", {}, "allowed"],
-  ["resource-explorer-2", "Search", {}, "allowed"],
-  ["cloudtrail", "LookupEvents", {}, "allowed"],
-  ["lambda", "BatchGetFunction", {}, "allowed"],
-  ["dynamodb", "Query", {}, "allowed"],
-  ["dynamodb", "Scan", {}, "allowed"],
-  ["logs", "FilterLogEvents", {}, "allowed"],
-  ["sts", "GetCallerIdentity", {}, "allowed"],
-  ["ec2", "DescribeKeyPairs", {}, "allowed"],
-  ["ssm", "GetParameter", { Name: "/a/b" }, "allowed"],
-  ["ssm", "GetParameter", { Name: "/a/b", WithDecryption: false }, "allowed"],
-  ["ec2", "DescribeInstanceAttribute", { Attribute: "instanceType" }, "allowed"],
+  ["ec2", "DescribeInstances", {}, "read"],
+  ["iam", "ListAccessKeys", {}, "read"],
+  ["iam", "GetAccessKeyLastUsed", { AccessKeyId: "AKIAEXAMPLE" }, "read"],
+  ["cloudwatch", "GetMetricData", {}, "read"],
+  ["resource-explorer-2", "Search", {}, "read"],
+  ["cloudtrail", "LookupEvents", {}, "read"],
+  ["lambda", "BatchGetFunction", {}, "read"],
+  ["dynamodb", "Query", {}, "read"],
+  ["dynamodb", "Scan", {}, "read"],
+  ["logs", "FilterLogEvents", {}, "read"],
+  ["sts", "GetCallerIdentity", {}, "read"],
+  ["ec2", "DescribeKeyPairs", {}, "read"],
+  ["ssm", "GetParameter", { Name: "/a/b" }, "read"],
+  ["ssm", "GetParameter", { Name: "/a/b", WithDecryption: false }, "read"],
+  ["ec2", "DescribeInstanceAttribute", { Attribute: "instanceType" }, "read"],
+  // Writes that answer with a new secret, and BatchGet* of secrets.
+  ["iam", "CreateAccessKey", { UserName: "x" }, "secret"],
+  ["iam", "CreateServiceSpecificCredential", {}, "secret"],
+  ["ec2", "CreateKeyPair", { KeyName: "k" }, "secret"],
+  ["secretsmanager", "BatchGetSecretValue", {}, "secret"],
+  ["ssm", "GetParameterHistory", { Name: "x", WithDecryption: true }, "secret"],
   // Get* that reveal a secret.
   ["secretsmanager", "GetSecretValue", {}, "secret"],
   ["ec2", "GetPasswordData", {}, "secret"],
@@ -50,7 +56,7 @@ const TABLE: Row[] = [
   ["ec2", "RunInstances", {}, "write"],
   ["s3", "PutObject", {}, "write"],
   ["lambda", "Invoke", {}, "write"],
-  ["iam", "CreateAccessKey", {}, "write"],
+  ["iam", "CreateUser", {}, "write"],
   ["logs", "StartQuery", {}, "write"],
   ["sns", "Publish", {}, "write"],
   ["rds", "DeleteDBInstance", {}, "write"],
@@ -62,26 +68,22 @@ const TABLE: Row[] = [
 for (const [service, action, params, want] of TABLE) {
   test(`${service} ${action} ${JSON.stringify(params)} is ${want}`, () => {
     const verdict = judge(service, action, params);
-    if (want === "allowed") {
-      expect(verdict).toEqual({ allowed: true });
+    if (want === "read" || want === "write") {
+      expect(verdict).toEqual({ kind: want });
     } else {
-      expect(verdict.allowed).toBe(false);
-      if (!verdict.allowed) expect(verdict.rule).toBe(want);
+      expect(verdict).toMatchObject({ kind: "refused", rule: want });
     }
   });
 }
 
-test("every refusal says that v1 is read-only and which rule", () => {
-  const messages = [
-    judge("ec2", "TerminateInstances"),
-    judge("secretsmanager", "GetSecretValue"),
-    judge("ce", "GetCostAndUsage"),
-  ].map((verdict) => (verdict.allowed ? "" : verdict.message));
-  for (const message of messages) expect(message).toContain("read-only in v1");
-  expect(messages[0]).toStartWith("Refused: read-only.");
-  expect(messages[1]).toStartWith("Refused: would reveal a secret.");
-  expect(messages[2]).toStartWith("Refused: costs money.");
-  expect(messages[2]).toContain("aws_cost");
+test("every refusal names its rule; a secret one says no confirm lifts it", () => {
+  const secret = judge("secretsmanager", "GetSecretValue");
+  const cost = judge("ce", "GetCostAndUsage");
+  if (secret.kind !== "refused" || cost.kind !== "refused") throw new Error("not refused");
+  expect(secret.message).toStartWith("Refused: would reveal a secret.");
+  expect(secret.message).toContain("whoever confirms it");
+  expect(cost.message).toStartWith("Refused: costs money.");
+  expect(cost.message).toContain("aws_cost");
 });
 
 test("lambda Environment values are redacted, names kept", () => {

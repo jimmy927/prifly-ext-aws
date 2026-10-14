@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AwsUsageError, buildRequest, errorOf, flatten, SERVICES, supportedServices } from "../aws";
+import { AwsUsageError, buildRequest, errorOf, flatten, SERVICES } from "../aws";
 
 test("a Query service: form POST with Action and Version, signed for the region and service", () => {
   const request = buildRequest(
@@ -64,11 +64,11 @@ test("a JSON service: JSON body, content type and X-Amz-Target", () => {
     region: "eu-north-1",
     service: "logs",
   });
-  expect(buildRequest("dynamodb", "Scan", {}, "eu-west-1").headers).toEqual({
+  expect(buildRequest("dynamodb", "Scan", {}, "eu-west-1")?.headers).toEqual({
     "content-type": "application/x-amz-json-1.0",
     "x-amz-target": "DynamoDB_20120810.Scan",
   });
-  expect(buildRequest("ecs", "ListClusters", {}, "eu-west-1").headers["x-amz-target"]).toBe(
+  expect(buildRequest("ecs", "ListClusters", {}, "eu-west-1")?.headers["x-amz-target"]).toBe(
     "AmazonEC2ContainerServiceV20141113.ListClusters",
   );
 });
@@ -82,59 +82,10 @@ test("Cost Explorer is ce.us-east-1 signed in us-east-1 whatever the region aske
   });
 });
 
-test("REST: S3 ListBuckets, ListObjectsV2 and GetBucketLocation; Lambda ListFunctions and GetFunction", () => {
-  expect(buildRequest("s3", "ListBuckets", {}, "eu-north-1")).toEqual({
-    url: "https://s3.amazonaws.com/",
-    method: "GET",
-    headers: {},
-    region: "us-east-1",
-    service: "s3",
-  });
-  expect(
-    buildRequest(
-      "s3",
-      "ListObjectsV2",
-      { Bucket: "my-bucket", Prefix: "a b/", MaxKeys: 5 },
-      "eu-north-1",
-    ),
-  ).toMatchObject({
-    url: "https://my-bucket.s3.eu-north-1.amazonaws.com/?list-type=2&prefix=a%20b%2F&max-keys=5",
-    region: "eu-north-1",
-  });
-  expect(
-    buildRequest("s3", "ListObjectsV2", { Bucket: "my.dotted.bucket" }, "eu-north-1").url,
-  ).toBe("https://s3.eu-north-1.amazonaws.com/my.dotted.bucket?list-type=2");
-  expect(
-    buildRequest("s3", "GetBucketLocation", { Bucket: "my-bucket" }, "eu-north-1"),
-  ).toMatchObject({
-    url: "https://my-bucket.s3.amazonaws.com/?location",
-    region: "us-east-1",
-  });
-  expect(buildRequest("lambda", "ListFunctions", { MaxItems: 10 }, "eu-north-1")).toMatchObject({
-    url: "https://lambda.eu-north-1.amazonaws.com/2015-03-31/functions?MaxItems=10",
-    service: "lambda",
-  });
-  expect(
-    buildRequest("lambda", "GetFunction", { FunctionName: "api", Qualifier: "1" }, "eu-north-1")
-      .url,
-  ).toBe("https://lambda.eu-north-1.amazonaws.com/2015-03-31/functions/api?Qualifier=1");
-});
-
-test("REST actions off the short list, and missing parameters, are usage errors", () => {
-  expect(() => buildRequest("s3", "GetObject", {}, "eu-north-1")).toThrow(AwsUsageError);
-  expect(() => buildRequest("s3", "ListObjectsV2", {}, "eu-north-1")).toThrow('needs "Bucket"');
-  expect(() => buildRequest("lambda", "Invoke", {}, "eu-north-1")).toThrow(AwsUsageError);
-  expect(() => buildRequest("ec2", "Describe Instances", {}, "eu-north-1")).toThrow(
-    "not an AWS action name",
-  );
-});
-
-test("an unknown service is refused with the list of supported ones", () => {
-  expect(() => buildRequest("kinesis", "ListStreams", {}, "eu-north-1")).toThrow(
-    /Unknown service "kinesis"\. Supported services: sts, ec2, iam/,
-  );
-  expect(supportedServices()).not.toContain("ce");
-  expect(supportedServices()).toContain("lambda");
+test("a bad action name is a usage error; a service off the table is left to its model", () => {
+  expect(() => buildRequest("ec2", "Describe Instances", {}, "eu-north-1")).toThrow(AwsUsageError);
+  expect(buildRequest("kinesis", "ListStreams", {}, "eu-north-1")).toBeNull();
+  expect(buildRequest("s3", "ListBuckets", {}, "eu-north-1")).toBeNull();
 });
 
 test("lists and objects flatten the way the protocol spells them", () => {

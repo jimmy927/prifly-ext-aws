@@ -46,7 +46,10 @@ export const IDENTITY = xml(
   "<GetCallerIdentityResponse><GetCallerIdentityResult><Arn>arn:aws:iam::482109371150:user/prifly</Arn><UserId>AIDAEXAMPLE</UserId><Account>482109371150</Account></GetCallerIdentityResult></GetCallerIdentityResponse>",
 );
 
-/** `service:Action` of a request, from its host, target header or form body. */
+/**
+ * `service:Action` of a Query or JSON request, from its host, target header or
+ * form body; `METHOD host/path` of a REST one ("PUT my-bucket.s3.eu-north-1.amazonaws.com/").
+ */
 export function keyOf(request: Request, body: string): string {
   const url = new URL(request.url);
   const host = url.hostname.split(".")[0] ?? "";
@@ -54,12 +57,7 @@ export function keyOf(request: Request, body: string): string {
   if (target !== null) return `${host}:${target.split(".").pop()}`;
   const action = new URLSearchParams(body).get("Action");
   if (action !== null) return `${host === "monitoring" ? "cloudwatch" : host}:${action}`;
-  if (url.hostname === "s3.amazonaws.com" && url.pathname === "/") return "s3:ListBuckets";
-  if (url.hostname.includes(".s3.") && url.searchParams.get("list-type") === "2")
-    return "s3:ListObjectsV2";
-  if (host === "lambda")
-    return url.pathname === "/2015-03-31/functions" ? "lambda:ListFunctions" : "lambda:GetFunction";
-  return `${host}:?`;
+  return `${request.method} ${url.hostname}${url.pathname}`;
 }
 
 /** The fake connections with one or two keys, answering from `table` (unknown calls get a 404). */

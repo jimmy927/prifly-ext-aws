@@ -11,6 +11,7 @@
  */
 
 import type {
+  ConfirmSpec,
   Decoration,
   ExtensionApi,
   ExtensionConnection,
@@ -196,6 +197,10 @@ export type FakeApi = {
   flags: Map<string, LauncherFlag | null>;
   notices: { text: string; tone: string | undefined; session: string | undefined }[];
   logs: { event: string; fields: Record<string, unknown> | undefined }[];
+  /** Every confirm card shown, in order. */
+  confirms: ConfirmSpec[];
+  /** Every status line set, in order. */
+  statuses: string[];
 };
 
 /** A fake `api`; parts left out of `options` are prifly's quiet defaults. */
@@ -204,6 +209,8 @@ export function fakeApi(
     connections?: ExtensionConnectionsApi;
     settings?: SettingValues;
     folder?: string;
+    /** The reader's answer to each confirm card; left out, Cancel. */
+    confirm?: (spec: ConfirmSpec) => boolean | Promise<boolean>;
   } = {},
 ): FakeApi {
   let tools: ExtensionTool[] = [];
@@ -212,9 +219,11 @@ export function fakeApi(
     flags: new Map(),
     notices: [],
     logs: [],
+    confirms: [],
+    statuses: [],
   };
   const api: ExtensionApi = {
-    features: ["settings", "start-session", "session-lookup"],
+    features: ["settings", "start-session", "session-lookup", "confirm", "status"],
     ...(options.settings === undefined ? {} : { settings: options.settings }),
     ...(options.connections === undefined ? {} : { connections: options.connections }),
     tools: {
@@ -241,6 +250,11 @@ export function fakeApi(
     snooze: () => undefined,
     dialog: async () => null,
     openUrl: async () => false,
+    confirm: async (spec) => {
+      fake.confirms.push(spec);
+      return (await options.confirm?.(spec)) ?? false;
+    },
+    status: (text) => void fake.statuses.push(text),
   };
   const callTool: FakeApi["callTool"] = (name, args, pick = null) => {
     const tool = tools.find((each) => each.name === name);

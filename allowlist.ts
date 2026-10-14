@@ -1,40 +1,58 @@
 /**
- * What `aws_call` may send. Pure: no network, no state.
+ * How `aws_api` treats a call. Pure: no network, no state.
  *
- * Version 1 is read-only. A call runs only when its action is a read, and
- * three things are refused even though they read:
- *  - a secret or a credential (`secret`): the session would see it;
- *  - a Cost Explorer call (`cost`): each costs money, and the daily reading
- *    (`cost.ts`) is the only reader of it;
- * everything else is a write (`write`). Every refusal says which rule and
- * that the extension is read-only.
+ *  - a read (`read`): its action starts like one (Describe, List, Get, …), so
+ *    it runs at once;
+ *  - a write (`write`): everything else, which runs only after the reader
+ *    confirms it on a card;
+ *  - refused (`refused`), whatever the reader would say: a call that hands a
+ *    secret or a credential to the session (`secret`), and Cost Explorer
+ *    (`cost`), whose every call costs money and which only the daily reading
+ *    (`cost.ts`) calls. Every refusal names its rule.
  */
 
 import type { Params } from "./aws";
 
-export type Rule = "secret" | "cost" | "write";
+export type Rule = "secret" | "cost";
 
-export type Verdict = { allowed: true } | { allowed: false; rule: Rule; message: string };
+export type Verdict =
+  | { kind: "read" }
+  | { kind: "write" }
+  | { kind: "refused"; rule: Rule; message: string };
 
-/** The word a refusal gets in the call log and on the board. */
+/** The first words of a refusal. */
 export const REFUSED_OUTCOME: Record<Rule, string> = {
-  write: "Refused: read-only",
   secret: "Refused: would reveal a secret",
   cost: "Refused: costs money",
 };
 
 const READ_PREFIX = /^(Describe|List|Get|Search|Lookup|BatchGet)(?=[A-Z0-9]|$)/;
-/** A `Get*` that hands out a secret, a password, a token or a key. */
+/** A `Get*` or `BatchGet*` that hands out a secret, a password, a token or a key. */
 const SECRET_NAME = /Secret|Password|Token|Credential|AccessDetails|PrivateKey|KeyPair/;
+/** Writes whose reply carries a new secret: an access key, a key pair's private key. */
+const SECRET_WRITES = new Set([
+  "iam:CreateAccessKey",
+  "iam:CreateServiceSpecificCredential",
+  "iam:ResetServiceSpecificCredential",
+  "ec2:CreateKeyPair",
+  "lightsail:CreateKeyPair",
+  "lightsail:DownloadDefaultKeyPair",
+]);
 /** Reads whose names do not start like one. */
 const OTHER_READS = new Set(["dynamodb:Query", "dynamodb:Scan", "logs:FilterLogEvents"]);
-const SSM_PARAMETER = new Set(["GetParameter", "GetParameters", "GetParametersByPath"]);
+const SSM_PARAMETER = new Set([
+  "GetParameter",
+  "GetParameters",
+  "GetParametersByPath",
+  "GetParameterHistory",
+]);
 const SSM_WORDS = "decrypts a SecureString parameter";
 
-const SUFFIX = "prifly-ext-aws is read-only in v1: it changes nothing in AWS.";
+const SUFFIX = "prifly-ext-aws never hands a secret to a session, whoever confirms it.";
 
 function refuse(rule: Rule, reason: string): Verdict {
-  return { allowed: false, rule, message: `${REFUSED_OUTCOME[rule]}. ${reason} ${SUFFIX}` };
+  const tail = rule === "secret" ? ` ${SUFFIX}` : "";
+  return { kind: "refused", rule, message: `${REFUSED_OUTCOME[rule]}. ${reason}${tail}` };
 }
 
 /** A parameter by name, whatever its case. */
@@ -53,8 +71,11 @@ function secretReason(service: string, action: string, params: Params): string |
   if (service === "sts" && action !== "GetCallerIdentity") {
     return `sts ${action} hands out credentials (only GetCallerIdentity is allowed).`;
   }
-  if (action.startsWith("Get") && SECRET_NAME.test(action)) {
+  if (/^(Get|BatchGet)/.test(action) && SECRET_NAME.test(action)) {
     return `${service} ${action} returns a secret, password, token or key.`;
+  }
+  if (SECRET_WRITES.has(`${service}:${action}`)) {
+    return `${service} ${action} answers with a new secret (an access key or a private key).`;
   }
   if (service === "ssm" && SSM_PARAMETER.has(action) && isTrue(param(params, "WithDecryption"))) {
     return `${service} ${action} with WithDecryption ${SSM_WORDS}.`;
@@ -71,7 +92,7 @@ function secretReason(service: string, action: string, params: Params): string |
   return null;
 }
 
-/** May `service` `action` with `params` be sent, and if not, which rule says so and in what words. */
+/** Is `service` `action` with `params` a read, a write to confirm, or refused (and in what words)? */
 export function judge(service: string, action: string, params: Params = {}): Verdict {
   const name = service.trim().toLowerCase();
   if (name === "ce") {
@@ -82,11 +103,8 @@ export function judge(service: string, action: string, params: Params = {}): Ver
   }
   const secret = secretReason(name, action, params);
   if (secret !== null) return refuse("secret", secret);
-  if (READ_PREFIX.test(action) || OTHER_READS.has(`${name}:${action}`)) return { allowed: true };
-  return refuse(
-    "write",
-    `${name} ${action} is not a read (the allowed ones start with Describe, List, Get, Search, Lookup or BatchGet).`,
-  );
+  if (READ_PREFIX.test(action) || OTHER_READS.has(`${name}:${action}`)) return { kind: "read" };
+  return { kind: "write" };
 }
 
 export const REDACTED = "[redacted by prifly]";

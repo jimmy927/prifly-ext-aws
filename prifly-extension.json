@@ -1,23 +1,14 @@
 {
   "id": "aws",
   "name": "AWS",
-  "description": "Your AWS accounts in prifly, read-only: resources, CloudWatch alarms and a daily cost reading, through the access key filed in Vault → Connections. Tools for every session and a launch board with your accounts, cost, alarms and the calls sessions made; an alarm there starts an investigation. Nothing in the status bar. prifly signs every call; the extension never sees a secret.",
-  "version": "0.2.0",
+  "description": "Your AWS accounts in every prifly session: any AWS API action through the access key filed in Vault → Connections. Reads answer at once; every write shows a confirm card and runs only on your click. Calls that reveal a secret, and Cost Explorer, are refused; a daily cost reading stands in for the latter. prifly signs every call; the extension never sees a secret.",
+  "version": "0.3.0",
   "main": "index.ts",
   "prompt": "prompt.md",
   "connections": [
     {
       "provider": "aws-keys",
-      "why": "Reads your AWS accounts' resources, alarms and costs. Read-only: it changes nothing in AWS."
-    }
-  ],
-  "launch": [
-    {
-      "id": "alarms",
-      "label": "AWS",
-      "icon": "aws",
-      "description": "Your AWS accounts, key age, month-to-date cost, CloudWatch alarms in ALARM and the calls sessions made today. Picking an alarm starts a session that investigates it with read-only AWS calls.",
-      "searchPlaceholder": "Filter by account, service, alarm or region"
+      "why": "Calls the AWS API for your sessions: reads at once, and writes only after you confirm each one on a card. What the key may do is its IAM policy."
     }
   ]
 }

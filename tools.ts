@@ -1,15 +1,18 @@
 /**
- * The tools every session sees as `mcp__prifly__aws_*`. Read-only: a call off
- * the allowlist is refused with the rule that refused it (`allowlist.ts`),
- * never sent. Each answers text and never throws for what AWS said.
+ * The tools every session sees as `mcp__prifly__aws_*`: `aws_api` (any AWS
+ * API action; reads at once, writes only after the reader confirms them on a
+ * card, secret-revealing calls and Cost Explorer refused), `aws_api_docs`
+ * (how to call an action, from its botocore model), `aws_whoami` and
+ * `aws_cost`. Each answers text and never throws for what AWS said.
  */
 
-import type { ExtensionTool } from "@prifly/extension-api";
+import type { ConfirmSpec, ExtensionTool } from "@prifly/extension-api";
 import { type Accounts, failure, parseAccount } from "./accounts";
-import { judge, REFUSED_OUTCOME, redact } from "./allowlist";
-import { AwsUsageError, DEFAULT_REGION, errorOf, type Params, supportedServices } from "./aws";
-import type { CallKind, CallLog } from "./calls";
+import { judge, redact } from "./allowlist";
+import { type AwsRequest, AwsUsageError, DEFAULT_REGION, type Params } from "./aws";
 import type { CostEntry, CostStore } from "./cost";
+import { actionDocs, serviceDocs } from "./docs";
+import { operationOf } from "./model-request";
 
 /** Longer replies are cut here, with a note of how to read on. */
 export const MAX_REPLY = 40_000;
@@ -99,7 +102,18 @@ export function costText(name: string, entry: CostEntry | null): string {
   );
 }
 
-type Deps = { accounts: Accounts; calls: CallLog; cost: CostStore; now: () => number };
+export type Deps = {
+  accounts: Accounts;
+  cost: CostStore;
+  /** `api.confirm`; absent on a prifly too old to ask, where every write is not done. */
+  confirm?: (spec: ConfirmSpec) => Promise<boolean>;
+  log: (event: string, fields: Record<string, string | number | boolean | null>) => void;
+};
+
+const ACCOUNT_ARG = {
+  type: "string",
+  description: "A connection id, account id or alias; left out, the only or first key.",
+};
 
 function whoamiTool(deps: Deps): ExtensionTool {
   return {
@@ -139,10 +153,7 @@ function costTool(deps: Deps): ExtensionTool {
     inputSchema: {
       type: "object",
       properties: {
-        account: {
-          type: "string",
-          description: "A connection id, account id or alias; left out, the only or first key.",
-        },
+        account: ACCOUNT_ARG,
       },
       additionalProperties: false,
     },
@@ -157,81 +168,168 @@ function costTool(deps: Deps): ExtensionTool {
   };
 }
 
-function callTool(deps: Deps): ExtensionTool {
+function apiTool(deps: Deps): ExtensionTool {
   return {
-    name: "aws_call",
-    description: `Makes one read-only AWS API call and returns AWS's reply as text (XML for the Query services, JSON for the others), cut to about 40 kB with the token to page on. Services: ${supportedServices().join(", ")}. Only reads run: Describe*, List*, Get*, Search*, Lookup*, BatchGet*, dynamodb Query/Scan and logs FilterLogEvents. Anything that changes AWS, reveals a secret (GetSecretValue, GetPasswordData, GetAuthorizationToken, sts other than GetCallerIdentity, ssm WithDecryption, ec2 userData) or costs money (Cost Explorer: use aws_cost) is refused. Lambda and ECS environment values are redacted. s3 offers ListBuckets, ListObjectsV2 and GetBucketLocation; lambda ListFunctions and GetFunction. Query services take flat params (\`{"InstanceId.1":"i-0abc"}\`; lists and objects are flattened); JSON services take the request body.`,
+    name: "aws_api",
+    description:
+      "Calls any AWS API action of any service with the reader's filed key (prifly signs it) and returns AWS's reply as text, cut to about 40 kB with the token to page on. Reads (Describe*, List*, Get*, Search*, Lookup*, BatchGet*, dynamodb Query/Scan, logs FilterLogEvents) run at once. Any other action is a write: the reader sees a confirm card with the service, action, region, account and params, and it runs only if they confirm; \"Not done: you cancelled\" means nothing was sent. Refused whatever the reader says: calls that reveal a secret (GetSecretValue, GetPasswordData, GetAuthorizationToken, sts other than GetCallerIdentity, ssm WithDecryption, ec2 userData, new access keys and key pairs) and Cost Explorer (use aws_cost). Lambda and ECS environment values come back redacted. Params by protocol: Query services (ec2, iam, rds, sns, cloudwatch, …) take flat or nested params (lists and objects are flattened); JSON services take the request body; REST services (s3, lambda, route53, …) take the action's members by name and each goes to the URI, query, header or body as the model says. For an action you do not know, call aws_api_docs first.",
     inputSchema: {
       type: "object",
       properties: {
-        service: { type: "string", description: "ec2, cloudwatch, logs, rds, s3, lambda, …" },
+        service: {
+          type: "string",
+          description: "The aws CLI's service name: ec2, s3, lambda, logs, route53, elbv2, …",
+        },
         action: { type: "string", description: "The API action, e.g. DescribeInstances." },
         params: { type: "object", description: "The action's parameters." },
         region: { type: "string", description: `Default ${DEFAULT_REGION}.` },
-        account: {
-          type: "string",
-          description: "A connection id, account id or alias; left out, the only or first key.",
-        },
+        account: ACCOUNT_ARG,
       },
       required: ["service", "action"],
       additionalProperties: false,
     },
-    call: (args, ctx) => makeCall(deps, ctx.session, args),
+    call: (args) => apiCall(deps, args),
   };
 }
 
-async function makeCall(
-  deps: Deps,
-  session: string,
-  args: Record<string, unknown>,
-): Promise<string> {
-  const service = text(args, "service").toLowerCase();
-  const action = text(args, "action");
-  const params = paramsOf(args);
-  const region = text(args, "region") || DEFAULT_REGION;
-  const picked = deps.accounts.resolve(text(args, "account"));
-  const record = (kind: CallKind, outcome: string): void =>
-    deps.calls.append({
-      at: new Date(deps.now()).toISOString(),
-      session,
-      account: picked.ok ? parseAccount(picked.connection.account).name : "",
-      service,
-      action,
-      region,
-      kind,
-      outcome,
-    });
-  const verdict = judge(service, action, params);
-  if (!verdict.allowed) {
-    record("refused", REFUSED_OUTCOME[verdict.rule]);
-    return verdict.message;
-  }
-  if (!picked.ok) {
-    record("failed", "Failed: no key");
-    return picked.message;
-  }
+type Call = { service: string; action: string; params: Params; region: string };
+
+function callOf(args: Record<string, unknown>): Call {
+  return {
+    service: text(args, "service").toLowerCase(),
+    action: text(args, "action"),
+    params: paramsOf(args),
+    region: text(args, "region") || DEFAULT_REGION,
+  };
+}
+
+/** The confirm card of a write: what goes out, exactly. */
+export function confirmSpec(call: Call, account: string, request: AwsRequest): ConfirmSpec {
+  const region =
+    request.region === call.region ? call.region : `${request.region} (global service)`;
+  return {
+    title: `AWS ${call.action}`,
+    summary: `${call.service} ${call.action} in ${region} on ${account}`,
+    details: [
+      `Service:  ${call.service}`,
+      `Action:   ${call.action}`,
+      `Region:   ${region}`,
+      `Account:  ${account}`,
+      `Request:  ${request.method} ${request.url}`,
+      "",
+      "Params:",
+      JSON.stringify(call.params, null, 2),
+    ].join("\n"),
+  };
+}
+
+export const CANCELLED = "Not done: you cancelled";
+const CANNOT_ASK =
+  "Not done: this prifly cannot show a confirm card, so aws_api makes no write. Ask the reader to update prifly.";
+
+/** Whether the reader confirmed the write; the words to answer with when not. */
+async function confirmed(deps: Deps, spec: ConfirmSpec): Promise<string | null> {
+  if (deps.confirm === undefined) return CANNOT_ASK;
   try {
-    const reply = await deps.accounts.call(picked.connection.id, service, action, params, region);
-    if (reply.kind === "sign-in") {
-      record("sign-in", "Key needs signing in");
-      return SIGN_IN;
-    }
-    if (reply.status >= 400) {
-      record("failed", `Failed: ${errorOf(reply.text).code || reply.status}`);
-      return `${failure(reply.text)} (HTTP ${reply.status}, ${service} ${action} in ${region}.)`;
-    }
-    record("read", "Read");
-    return trim(redact(reply.text));
+    return (await deps.confirm(spec)) ? null : CANCELLED;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    record(
-      "failed",
-      error instanceof AwsUsageError ? "Failed: not supported" : "Failed: could not call",
-    );
-    return error instanceof AwsUsageError ? message : `Could not call AWS: ${message}`;
+    return `Not done: the confirm card failed (${message}).`;
   }
 }
 
+async function apiCall(deps: Deps, args: Record<string, unknown>): Promise<string> {
+  const call = callOf(args);
+  const verdict = judge(call.service, call.action, call.params);
+  if (verdict.kind === "refused") return verdict.message;
+  const picked = deps.accounts.resolve(text(args, "account"));
+  if (!picked.ok) return picked.message;
+  let request: AwsRequest;
+  try {
+    request = await deps.accounts.prepare(call.service, call.action, call.params, call.region);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return error instanceof AwsUsageError ? message : `Could not prepare the call: ${message}`;
+  }
+  const account = picked.connection.account;
+  if (verdict.kind === "write") {
+    const refusal = await confirmed(deps, confirmSpec(call, account, request));
+    if (refusal !== null) {
+      deps.log("write_not_done", { service: call.service, action: call.action, why: refusal });
+      return refusal;
+    }
+  }
+  const answer = await sendCall(deps, picked.connection.id, call, request);
+  if (verdict.kind === "write") {
+    deps.log("write", {
+      service: call.service,
+      action: call.action,
+      region: request.region,
+      account,
+      outcome: answer.outcome,
+    });
+  }
+  return answer.text;
+}
+
+async function sendCall(
+  deps: Deps,
+  id: string,
+  call: Call,
+  request: AwsRequest,
+): Promise<{ text: string; outcome: string }> {
+  try {
+    const reply = await deps.accounts.send(id, request);
+    if (reply.kind === "sign-in") return { text: SIGN_IN, outcome: "sign-in" };
+    if (reply.status >= 400) {
+      return {
+        text: `${failure(reply.text)} (HTTP ${reply.status}, ${call.service} ${call.action} in ${request.region}.)`,
+        outcome: `HTTP ${reply.status}`,
+      };
+    }
+    const body =
+      reply.text.trim() === ""
+        ? `AWS answered HTTP ${reply.status} with no body: done.`
+        : trim(redact(reply.text));
+    return { text: body, outcome: `HTTP ${reply.status}` };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { text: `Could not call AWS: ${message}`, outcome: "failed" };
+  }
+}
+
+function docsTool(deps: Deps): ExtensionTool {
+  return {
+    name: "aws_api_docs",
+    description:
+      "How to call an AWS API action, read from its botocore service model on GitHub (the newest API version; kept while prifly runs). Without action: the service's protocol, endpoint prefix, API version and its operation names. With action: how aws_api sends it (HTTP method and URI, or target), whether it is a read, a write that asks the reader, or refused, its required params, and its input and output shapes a few levels deep with trimmed docs. Use it before calling an action you do not know.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        service: {
+          type: "string",
+          description: "The aws CLI's service name: ec2, s3, lambda, route53, elbv2, …",
+        },
+        action: { type: "string", description: "One operation, e.g. PutBucketTagging." },
+      },
+      required: ["service"],
+      additionalProperties: false,
+    },
+    call: async (args) => {
+      const service = text(args, "service").toLowerCase();
+      const action = text(args, "action");
+      try {
+        const model = await deps.accounts.models.load(service);
+        if (action === "") return serviceDocs(model);
+        return actionDocs(model, operationOf(model, model.service, action));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return error instanceof AwsUsageError ? message : `Could not read the AWS docs: ${message}`;
+      }
+    },
+  };
+}
+
 export function awsTools(deps: Deps): ExtensionTool[] {
-  return [whoamiTool(deps), callTool(deps), costTool(deps)];
+  return [whoamiTool(deps), apiTool(deps), docsTool(deps), costTool(deps)];
 }

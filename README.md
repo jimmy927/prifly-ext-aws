@@ -1,42 +1,47 @@
 # prifly-ext-aws
 
-Your AWS accounts in prifly, read through the access key you filed in prifly's
-Vault → Connections (Add AWS key). prifly signs every request with AWS
+Your AWS accounts in every prifly session, through the access key you filed in
+prifly's Vault → Connections (Add AWS key). prifly signs every request with AWS
 Signature Version 4 inside the host: this extension never holds a secret, and
 needs no `aws` CLI.
 
-**Read-only.** Nothing here changes AWS. Every call off the allowlist is
-refused with a message naming the rule.
+Ask any session for anything you would do with the aws CLI. **Reads answer at
+once. Every write shows a confirm card** (service, action, region, account,
+the request and its params) **and runs only when you click Confirm.** Cancel,
+and nothing is sent.
 
 ## What it gives you
 
 - **Tools for every session** (`mcp__prifly__aws_*`):
+  - `aws_api { service, action, params?, region?, account? }`: any action of any AWS service. `service` is the name the aws CLI uses (`ec2`, `s3`, `lambda`, `route53`, `elbv2`, …); `account` is a connection id, an account id or an alias (default: the only or first key); `region` defaults to `eu-north-1`. The reply is text (XML or JSON), cut to about 40 kB with the `NextToken`/`Marker` to page on. A key AWS no longer accepts comes back as text telling the reader to re-check or re-add it.
+  - `aws_api_docs { service, action? }`: how to call an action, read from its botocore service model. Without `action`: the protocol, endpoint prefix, API version and the operation names. With it: how `aws_api` sends it (method and URI, or target), whether it is a read, a write or refused, its required params, and its input and output shapes a few levels deep with trimmed docs, capped at about 40 kB.
   - `aws_whoami`: the keys filed, whether each still works, and the IAM identity it is (STS `GetCallerIdentity`, kept five minutes).
-  - `aws_call { service, action, params?, region?, account? }`: one read-only API call. `account` is a connection id, an account id or an alias (default: the only or first key); `region` defaults to `eu-north-1`. The reply is text (XML or JSON), cut to about 40 kB with the `NextToken`/`Marker` to page on. A key AWS no longer accepts comes back as text telling the reader to re-check or re-add it.
   - `aws_cost { account? }`: the cached daily Cost Explorer reading. Never a live call.
-- **The launch board "AWS"**, in four sections: Accounts (who each key is and the age of its access key, flagged to rotate over 90 days, "unknown" when IAM will not say), Cost this month (by service, with the forecast), Alarms in ALARM (one item per CloudWatch alarm across your accounts) and Calls from sessions today (refusals included). A picked alarm starts a session that names the alarm, account, region and metric and investigates with `aws_call` (`GetMetricData` around the state change, logs `FilterLogEvents`); the other rows only inform. With no key filed the board's one row says so and its "Add AWS key" action opens prifly's form. Loading, empty and error states are the board's own.
-- **A glowing launcher button** while any alarm is in ALARM.
-- **Nothing in prifly's status bar**: the extension declares no panel and shows no status-bar item.
+- **One status line** in Settings → Extensions: `Connected · account <id> (<user>)` for the first key (with the number of keys when there are more), or what stands in the way (no key filed, the key needs signing in). Read again every 15 minutes.
+- No board, launcher, flag or status-bar item.
 
-## What `aws_call` allows
+## What `aws_api` does with a call
 
 | | |
 |---|---|
-| Runs | `Describe*`, `List*`, `Get*`, `Search*`, `Lookup*`, `BatchGet*`; DynamoDB `Query` and `Scan`; Logs `FilterLogEvents` |
-| Refused: reveals a secret | any `Get*` whose name has Secret, Password, Token, Credential, AccessDetails, PrivateKey or KeyPair; every STS action but `GetCallerIdentity`; SSM `GetParameter*` with `WithDecryption`; EC2 `DescribeInstanceAttribute` for `userData` |
+| Runs at once (a read) | `Describe*`, `List*`, `Get*`, `Search*`, `Lookup*`, `BatchGet*`; DynamoDB `Query` and `Scan`; Logs `FilterLogEvents` |
+| Asks first (a write) | every other action: a confirm card through `api.confirm`; Cancel answers "Not done: you cancelled" and sends nothing. A prifly without `confirm` makes no write at all |
+| Refused: reveals a secret | any `Get*` or `BatchGet*` whose name has Secret, Password, Token, Credential, AccessDetails, PrivateKey or KeyPair; every STS action but `GetCallerIdentity`; SSM `GetParameter*` with `WithDecryption`; EC2 `DescribeInstanceAttribute` for `userData`; IAM `CreateAccessKey`, `CreateServiceSpecificCredential`, `ResetServiceSpecificCredential`; EC2 and Lightsail `CreateKeyPair`, Lightsail `DownloadDefaultKeyPair` |
 | Refused: costs money | every Cost Explorer (`ce`) action. Cost Explorer is read once per account per day by the extension itself (3 calls, about $0.03) |
-| Refused: a write | everything else |
 | Redacted in replies | Lambda `Environment` variables, ECS container `environment` and `secrets`, a Lambda's signed code link, EC2 launch template `userData`: shown as `[redacted by prifly]` |
 
-Services: `sts`, `ec2`, `iam`, `rds`, `elasticloadbalancing`, `sns`, `cloudformation`, `cloudwatch`, `logs`, `dynamodb`, `ecs`; `s3` (`ListBuckets`, `ListObjectsV2`, `GetBucketLocation`); `lambda` (`ListFunctions`, `GetFunction`). An unknown service is refused with this list.
+The key's IAM policy stays the backstop: what it does not allow, AWS refuses.
+
+**How a request is built.** `sts`, `ec2`, `iam`, `rds`, `elasticloadbalancing`, `sns`, `cloudformation`, `cloudwatch`, `logs`, `dynamodb`, `ecs` and `ce` are built from a table, with no network. Every other service is built from its botocore model, the same one `aws_api_docs` reads: Query and EC2 (flattened form params), JSON 1.0/1.1 (`X-Amz-Target`), rest-json and rest-xml (each member to the URI, query string, a header or the body as the model says; a payload member is the whole body; XML named and namespaced from the model; `Content-MD5` where the model requires a checksum; an S3 bucket in the host when its name allows; global services such as IAM, Route 53 and CloudFront at their global endpoint, signed in `us-east-1`).
+
+**The models.** The newest API version of a service is found with the GitHub contents API (`api.github.com/repos/boto/botocore/contents/botocore/data/<service>`), its `service-2.json` fetched from `raw.githubusercontent.com/boto/botocore/develop/…`, and kept in memory while prifly runs.
 
 ## Background reads
 
-- **Alarms.** Once a day, per account, `ec2 DescribeRegions` and one `cloudwatch DescribeAlarms` per region find the regions that have alarms. Every five minutes only those regions are asked for `StateValue=ALARM`.
-- **Cost.** Once per account per UTC day: `GetCostAndUsage` (month to date, grouped by service, unblended), `GetCostForecast` to month end, and `GetCostAndUsage` for the same days of last month. Kept in `cost.json` in the extension's folder. If the key may not read Cost Explorer, or it is not enabled for the account, a note is kept instead and the board shows it in place of the cost row's figures; the next try is tomorrow.
-- **Key age.** IAM `ListAccessKeys` and `GetAccessKeyLastUsed`. prifly does not say which access key a connection holds, so it is the active one IAM saw used last.
+- **Cost.** Once per account per UTC day: `GetCostAndUsage` (month to date, grouped by service, unblended), `GetCostForecast` to month end, and `GetCostAndUsage` for the same days of last month. Kept in `cost.json` in the extension's folder. If the key may not read Cost Explorer, or it is not enabled for the account, a note is kept instead and `aws_cost` says so; the next try is tomorrow.
+- **Status.** STS `GetCallerIdentity` for the first key, every 15 minutes.
 
-Kept in the extension's folder: `cost.json`, `alarm-regions.json` and `calls.jsonl` (the call log, 30 days).
+Writes, and writes not done, are written to prifly's log (`write`, `write_not_done`).
 
 ## Develop
 
@@ -49,15 +54,16 @@ The types come from `@prifly/extension-api`, at a tag of `jimmy927/prifly-extens
 
 | File | What it is |
 |---|---|
-| `aws.ts` | The wire shapes (Query, JSON, REST), the service table, `send` through `api.connections.fetch` |
-| `allowlist.ts` | Pure: what `aws_call` may send, which rule refuses the rest, the redaction of replies |
-| `tools.ts` | `aws_whoami`, `aws_call`, `aws_cost`; trimming and paging |
-| `accounts.ts` | The filed keys, which one a call means, identity and key age |
+| `aws.ts` | The table services' wire shapes (Query, JSON), `send` through `api.connections.fetch` |
+| `models.ts` | The botocore models from GitHub, kept in memory |
+| `model-request.ts` | Any request from its model (Query, EC2, JSON, rest-json, rest-xml) |
+| `allowlist.ts` | Pure: read, write or refused, and the redaction of replies |
+| `tools.ts` | `aws_whoami`, `aws_api`, `aws_api_docs`, `aws_cost`; the confirm card, trimming and paging |
+| `docs.ts` | `aws_api_docs`'s text from a model |
+| `accounts.ts` | The filed keys, which one a call means, identity |
+| `status.ts` | The Settings → Extensions line |
 | `cost.ts` | The once-a-day Cost Explorer reading and its note |
-| `alarms.ts` | The daily region sweep, the five-minute poll, the launcher glow |
-| `launch.ts` | The board (accounts, cost, alarms, calls) and the session a picked alarm starts |
-| `calls.ts` | The 30-day call log |
-| `test/fake-aws.ts` | A fake `aws-keys` connection answering canned XML and JSON, recording `region` and `service` |
+| `test/fake-aws.ts`, `test/fake-models.ts` | A fake `aws-keys` connection answering canned XML and JSON; a fake GitHub serving small models |
 
 ## License and contributing
 
