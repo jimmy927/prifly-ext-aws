@@ -132,6 +132,12 @@ const LAMBDA: Model = {
       http: { method: "PUT", requestUri: "/2015-03-31/functions/{FunctionName}/configuration" },
       input: { shape: "UpdateFunctionConfigurationRequest" },
     },
+    // Named like a read, sent as a PUT: made up, to test the method backstop.
+    GetLockedConfig: {
+      name: "GetLockedConfig",
+      http: { method: "PUT", requestUri: "/2015-03-31/functions/{FunctionName}/lock" },
+      input: { shape: "UpdateFunctionConfigurationRequest" },
+    },
     Invoke: {
       name: "Invoke",
       http: { method: "POST", requestUri: "/2015-03-31/functions/{FunctionName}/invocations" },

@@ -26,6 +26,20 @@ const TABLE: Row[] = [
   ["ec2", "CreateKeyPair", { KeyName: "k" }, "secret"],
   ["secretsmanager", "BatchGetSecretValue", {}, "secret"],
   ["ssm", "GetParameterHistory", { Name: "x", WithDecryption: true }, "secret"],
+  // Plaintext key material, decrypted values and auth tokens.
+  ["kms", "Decrypt", { CiphertextBlob: "x" }, "secret"],
+  ["kms", "GenerateDataKey", { KeyId: "k" }, "secret"],
+  ["kms", "GenerateDataKeyPair", { KeyId: "k" }, "secret"],
+  ["sso-oidc", "CreateToken", {}, "secret"],
+  ["cognito-idp", "InitiateAuth", {}, "secret"],
+  ["cognito-idp", "AdminInitiateAuth", {}, "secret"],
+  ["cognito-idp", "RespondToAuthChallenge", {}, "secret"],
+  ["kms", "Encrypt", { KeyId: "k", Plaintext: "x" }, "write"],
+  // Whatever the case of the action.
+  ["ec2", "getPasswordData", {}, "secret"],
+  ["kms", "decrypt", {}, "secret"],
+  ["ssm", "getParameter", { Name: "x", WithDecryption: true }, "secret"],
+  ["ec2", "describeInstanceAttribute", { Attribute: "userData" }, "secret"],
   // Get* that reveal a secret.
   ["secretsmanager", "GetSecretValue", {}, "secret"],
   ["ec2", "GetPasswordData", {}, "secret"],

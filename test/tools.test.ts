@@ -213,6 +213,18 @@ test("every kind of write asks, and a cancel sends nothing, REST and JSON alike"
   expect(fake.sent).toHaveLength(0);
 });
 
+test("a REST action named like a read but sent as a PUT still asks first", async () => {
+  const { call, fake, confirms } = setup({}, { answer: false });
+  const out = await call("aws_api", {
+    service: "lambda",
+    action: "GetLockedConfig",
+    params: { FunctionName: "api" },
+  });
+  expect(out).toBe(CANCELLED);
+  expect(confirms).toHaveLength(1);
+  expect(fake.sent).toHaveLength(0);
+});
+
 test("a write on a prifly with no confirm is not done", async () => {
   const { call, fake } = setup({}, { answer: null });
   const out = await call("aws_api", { service: "ec2", action: "RebootInstances" });

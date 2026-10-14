@@ -172,7 +172,7 @@ function apiTool(deps: Deps): ExtensionTool {
   return {
     name: "aws_api",
     description:
-      "Calls any AWS API action of any service with the reader's filed key (prifly signs it) and returns AWS's reply as text, cut to about 40 kB with the token to page on. Reads (Describe*, List*, Get*, Search*, Lookup*, BatchGet*, dynamodb Query/Scan, logs FilterLogEvents) run at once. Any other action is a write: the reader sees a confirm card with the service, action, region, account and params, and it runs only if they confirm; \"Not done: you cancelled\" means nothing was sent. Refused whatever the reader says: calls that reveal a secret (GetSecretValue, GetPasswordData, GetAuthorizationToken, sts other than GetCallerIdentity, ssm WithDecryption, ec2 userData, new access keys and key pairs) and Cost Explorer (use aws_cost). Lambda and ECS environment values come back redacted. Params by protocol: Query services (ec2, iam, rds, sns, cloudwatch, …) take flat or nested params (lists and objects are flattened); JSON services take the request body; REST services (s3, lambda, route53, …) take the action's members by name and each goes to the URI, query, header or body as the model says. For an action you do not know, call aws_api_docs first.",
+      "Calls any AWS API action of any service with the reader's filed key (prifly signs it) and returns AWS's reply as text, cut to about 40 kB with the token to page on. Reads (Describe*, List*, Get*, Search*, Lookup*, BatchGet*, dynamodb Query/Scan, logs FilterLogEvents) run at once. Any other action is a write: the reader sees a confirm card with the service, action, region, account and params, and it runs only if they confirm; \"Not done: you cancelled\" means nothing was sent. Refused whatever the reader says: calls that reveal a secret (GetSecretValue, GetPasswordData, GetAuthorizationToken, sts other than GetCallerIdentity, ssm WithDecryption, ec2 userData, new access keys and key pairs, kms Decrypt/GenerateDataKey/GenerateDataKeyPair, sso-oidc CreateToken, cognito-idp InitiateAuth/AdminInitiateAuth/RespondToAuthChallenge) and Cost Explorer (use aws_cost). Lambda and ECS environment values come back redacted. Params by protocol: Query services (ec2, iam, rds, sns, cloudwatch, …) take flat or nested params (lists and objects are flattened); JSON services take the request body; REST services (s3, lambda, route53, …) take the action's members by name and each goes to the URI, query, header or body as the model says. For an action you do not know, call aws_api_docs first.",
     inputSchema: {
       type: "object",
       properties: {
@@ -252,7 +252,9 @@ async function apiCall(deps: Deps, args: Record<string, unknown>): Promise<strin
     return error instanceof AwsUsageError ? message : `Could not prepare the call: ${message}`;
   }
   const account = picked.connection.account;
-  if (verdict.kind === "write") {
+  // A backstop for REST models: a PUT, DELETE or PATCH changes something, whatever its name.
+  const write = verdict.kind === "write" || ["PUT", "DELETE", "PATCH"].includes(request.method);
+  if (write) {
     const refusal = await confirmed(deps, confirmSpec(call, account, request));
     if (refusal !== null) {
       deps.log("write_not_done", { service: call.service, action: call.action, why: refusal });
@@ -260,7 +262,7 @@ async function apiCall(deps: Deps, args: Record<string, unknown>): Promise<strin
     }
   }
   const answer = await sendCall(deps, picked.connection.id, call, request);
-  if (verdict.kind === "write") {
+  if (write) {
     deps.log("write", {
       service: call.service,
       action: call.action,

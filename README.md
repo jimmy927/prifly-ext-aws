@@ -26,7 +26,7 @@ and nothing is sent.
 |---|---|
 | Runs at once (a read) | `Describe*`, `List*`, `Get*`, `Search*`, `Lookup*`, `BatchGet*`; DynamoDB `Query` and `Scan`; Logs `FilterLogEvents` |
 | Asks first (a write) | every other action: a confirm card through `api.confirm`; Cancel answers "Not done: you cancelled" and sends nothing. A prifly without `confirm` makes no write at all |
-| Refused: reveals a secret | any `Get*` or `BatchGet*` whose name has Secret, Password, Token, Credential, AccessDetails, PrivateKey or KeyPair; every STS action but `GetCallerIdentity`; SSM `GetParameter*` with `WithDecryption`; EC2 `DescribeInstanceAttribute` for `userData`; IAM `CreateAccessKey`, `CreateServiceSpecificCredential`, `ResetServiceSpecificCredential`; EC2 and Lightsail `CreateKeyPair`, Lightsail `DownloadDefaultKeyPair` |
+| Refused: reveals a secret | any `Get*` or `BatchGet*` whose name has Secret, Password, Token, Credential, AccessDetails, PrivateKey or KeyPair; every STS action but `GetCallerIdentity`; SSM `GetParameter*` with `WithDecryption`; EC2 `DescribeInstanceAttribute` for `userData`; IAM `CreateAccessKey`, `CreateServiceSpecificCredential`, `ResetServiceSpecificCredential`; EC2 and Lightsail `CreateKeyPair`, Lightsail `DownloadDefaultKeyPair`; KMS `Decrypt`, `GenerateDataKey`, `GenerateDataKeyPair`; SSO OIDC `CreateToken`; Cognito `InitiateAuth`, `AdminInitiateAuth`, `RespondToAuthChallenge`. Matched whatever the case of the action |
 | Refused: costs money | every Cost Explorer (`ce`) action. Cost Explorer is read once per account per day by the extension itself (3 calls, about $0.03) |
 | Redacted in replies | Lambda `Environment` variables, ECS container `environment` and `secrets`, a Lambda's signed code link, EC2 launch template `userData`: shown as `[redacted by prifly]` |
 
@@ -34,7 +34,7 @@ The key's IAM policy stays the backstop: what it does not allow, AWS refuses.
 
 **How a request is built.** `sts`, `ec2`, `iam`, `rds`, `elasticloadbalancing`, `sns`, `cloudformation`, `cloudwatch`, `logs`, `dynamodb`, `ecs` and `ce` are built from a table, with no network. Every other service is built from its botocore model, the same one `aws_api_docs` reads: Query and EC2 (flattened form params), JSON 1.0/1.1 (`X-Amz-Target`), rest-json and rest-xml (each member to the URI, query string, a header or the body as the model says; a payload member is the whole body; XML named and namespaced from the model; `Content-MD5` where the model requires a checksum; an S3 bucket in the host when its name allows; global services such as IAM, Route 53 and CloudFront at their global endpoint, signed in `us-east-1`).
 
-**The models.** The newest API version of a service is found with the GitHub contents API (`api.github.com/repos/boto/botocore/contents/botocore/data/<service>`), its `service-2.json` fetched from `raw.githubusercontent.com/boto/botocore/develop/…`, and kept in memory while prifly runs.
+**The models.** The newest API version of a service is found with the GitHub contents API (`api.github.com/repos/boto/botocore/contents/botocore/data/<service>`), its `service-2.json` fetched from `raw.githubusercontent.com/boto/botocore/develop/…`, and kept in memory while prifly runs. The models come from botocore's `develop` branch, not a pinned tag, so a request's shape follows AWS's newest published model without a release of this extension.
 
 ## Background reads
 

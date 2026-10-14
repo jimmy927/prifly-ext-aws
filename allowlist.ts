@@ -27,17 +27,30 @@ export const REFUSED_OUTCOME: Record<Rule, string> = {
 };
 
 const READ_PREFIX = /^(Describe|List|Get|Search|Lookup|BatchGet)(?=[A-Z0-9]|$)/;
-/** A `Get*` or `BatchGet*` that hands out a secret, a password, a token or a key. */
-const SECRET_NAME = /Secret|Password|Token|Credential|AccessDetails|PrivateKey|KeyPair/;
-/** Writes whose reply carries a new secret: an access key, a key pair's private key. */
-const SECRET_WRITES = new Set([
-  "iam:CreateAccessKey",
-  "iam:CreateServiceSpecificCredential",
-  "iam:ResetServiceSpecificCredential",
-  "ec2:CreateKeyPair",
-  "lightsail:CreateKeyPair",
-  "lightsail:DownloadDefaultKeyPair",
-]);
+/** A `Get*` or `BatchGet*` that hands out a secret, a password, a token or a key (any case). */
+const SECRET_NAME = /Secret|Password|Token|Credential|AccessDetails|PrivateKey|KeyPair/i;
+/**
+ * Other calls whose reply carries a secret: a new access key, a private key,
+ * plaintext key material or a decrypted value, an auth token. Kept lower case:
+ * compared whatever the case of the action.
+ */
+const SECRET_CALLS = new Set(
+  [
+    "iam:CreateAccessKey",
+    "iam:CreateServiceSpecificCredential",
+    "iam:ResetServiceSpecificCredential",
+    "ec2:CreateKeyPair",
+    "lightsail:CreateKeyPair",
+    "lightsail:DownloadDefaultKeyPair",
+    "kms:Decrypt",
+    "kms:GenerateDataKey",
+    "kms:GenerateDataKeyPair",
+    "sso-oidc:CreateToken",
+    "cognito-idp:InitiateAuth",
+    "cognito-idp:AdminInitiateAuth",
+    "cognito-idp:RespondToAuthChallenge",
+  ].map((each) => each.toLowerCase()),
+);
 /** Reads whose names do not start like one. */
 const OTHER_READS = new Set(["dynamodb:Query", "dynamodb:Scan", "logs:FilterLogEvents"]);
 const SSM_PARAMETER = new Set([
@@ -71,19 +84,20 @@ function secretReason(service: string, action: string, params: Params): string |
   if (service === "sts" && action !== "GetCallerIdentity") {
     return `sts ${action} hands out credentials (only GetCallerIdentity is allowed).`;
   }
-  if (/^(Get|BatchGet)/.test(action) && SECRET_NAME.test(action)) {
+  if (/^(Get|BatchGet)/i.test(action) && SECRET_NAME.test(action)) {
     return `${service} ${action} returns a secret, password, token or key.`;
   }
-  if (SECRET_WRITES.has(`${service}:${action}`)) {
-    return `${service} ${action} answers with a new secret (an access key or a private key).`;
+  if (SECRET_CALLS.has(`${service}:${action}`.toLowerCase())) {
+    return `${service} ${action} answers with a secret (an access key, a private key, plaintext key material or an auth token).`;
   }
-  if (service === "ssm" && SSM_PARAMETER.has(action) && isTrue(param(params, "WithDecryption"))) {
+  const ssm = [...SSM_PARAMETER].some((each) => each.toLowerCase() === action.toLowerCase());
+  if (service === "ssm" && ssm && isTrue(param(params, "WithDecryption"))) {
     return `${service} ${action} with WithDecryption ${SSM_WORDS}.`;
   }
   const attribute = param(params, "Attribute");
   if (
     service === "ec2" &&
-    action === "DescribeInstanceAttribute" &&
+    action.toLowerCase() === "describeinstanceattribute" &&
     typeof attribute === "string" &&
     attribute.toLowerCase() === "userdata"
   ) {
