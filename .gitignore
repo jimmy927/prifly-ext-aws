@@ -1,1 +1,6 @@
 node_modules/
+
+# Runtime files the plugin writes into its install folder
+/alarm-regions.json
+/calls.jsonl
+/cost.json
