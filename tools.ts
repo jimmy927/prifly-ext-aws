@@ -203,13 +203,90 @@ function callOf(args: Record<string, unknown>): Call {
   };
 }
 
-/** The confirm card of a write: what goes out, exactly. */
+/** "CreateBucket" -> "create bucket"; "DBInstance" runs stay together ("describe DB instances"). */
+export function humanAction(action: string): string {
+  return action
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .split(" ")
+    .map((word, i) => (i === 0 || !/^[A-Z]{2,}$/.test(word) ? word.toLowerCase() : word))
+    .join(" ");
+}
+
+/** The params that name what an action is about, most telling first. */
+const TARGET_KEYS = [
+  "Name",
+  "BucketName",
+  "Bucket",
+  "FunctionName",
+  "InstanceIds",
+  "InstanceId",
+  "DBInstanceIdentifier",
+  "DBClusterIdentifier",
+  "ClusterName",
+  "TableName",
+  "QueueName",
+  "TopicArn",
+  "RoleName",
+  "UserName",
+  "GroupName",
+  "StackName",
+  "LogGroupName",
+  "HostedZoneId",
+  "VolumeId",
+  "KeyName",
+  "SecretId",
+  "Key",
+];
+
+const MAX_VALUE = 80;
+
+function short(text: string): string {
+  const one = text.replace(/\s+/g, " ").trim();
+  return one.length > MAX_VALUE ? `${one.slice(0, MAX_VALUE - 1)}…` : one;
+}
+
+/** One param value as a short readable string; nested objects and long lists are summarised. */
+function readable(value: unknown): string {
+  if (value === null || value === undefined) return "(none)";
+  if (typeof value === "string") return short(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    if (value.every((v) => ["string", "number", "boolean"].includes(typeof v))) {
+      return short(value.join(", "));
+    }
+    return `${value.length} item${value.length === 1 ? "" : "s"}`;
+  }
+  const count = Object.keys(value as object).length;
+  return `${count} field${count === 1 ? "" : "s"}`;
+}
+
+/** The obvious target of the call, if a param names one. */
+function targetOf(params: Params): string | null {
+  for (const key of TARGET_KEYS) {
+    const value = params[key];
+    if (value === undefined || value === null || value === "") continue;
+    const text = readable(value);
+    if (text !== "" && !text.endsWith(" fields") && !text.endsWith(" items")) return text;
+  }
+  return null;
+}
+
+/** The confirm card of a write: a sentence, the readable params, and the technical request folded away. */
 export function confirmSpec(call: Call, account: string, request: AwsRequest): ConfirmSpec {
   const region =
     request.region === call.region ? call.region : `${request.region} (global service)`;
+  const verb = humanAction(call.action);
+  const target = targetOf(call.params);
+  const what = `${verb.charAt(0).toUpperCase()}${verb.slice(1)} with ${call.service}`;
+  const sentence = `${what}${target === null ? "" : `, on ${target}`}, in ${region} for account ${account}.`;
+  const lines = Object.entries(call.params).map(([key, value]) => `${key}: ${readable(value)}`);
   return {
     title: `AWS ${call.action}`,
-    summary: `${call.service} ${call.action} in ${region} on ${account}`,
+    summary: sentence,
+    content: lines.join("\n"),
     details: [
       `Service:  ${call.service}`,
       `Action:   ${call.action}`,

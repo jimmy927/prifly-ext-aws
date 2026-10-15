@@ -5,9 +5,10 @@ import { join } from "node:path";
 import type { ConfirmSpec, ExtensionTool } from "@prifly/extension-api";
 import { Accounts } from "../accounts";
 import { REDACTED } from "../allowlist";
+import type { AwsRequest } from "../aws";
 import { CostStore } from "../cost";
 import { Models } from "../models";
-import { awsTools, CANCELLED, MAX_REPLY } from "../tools";
+import { awsTools, CANCELLED, confirmSpec, MAX_REPLY } from "../tools";
 import { type Canned, fakeAws, IDENTITY, json, KEY, SECOND, xml } from "./fake-aws";
 import { fakeGithub } from "./fake-models";
 
@@ -167,13 +168,14 @@ test("a write asks first: the card shows service, action, region, account and th
   const card = confirms[0] as ConfirmSpec;
   expect(card.title).toBe("AWS TerminateInstances");
   expect(card.summary).toBe(
-    "ec2 TerminateInstances in eu-north-1 on artemis-prod (4821-0937-1150)",
+    "Terminate instances with ec2, on i-1, in eu-north-1 for account artemis-prod (4821-0937-1150).",
   );
   expect(card.details).toContain("Service:  ec2");
   expect(card.details).toContain("Action:   TerminateInstances");
   expect(card.details).toContain("Region:   eu-north-1");
   expect(card.details).toContain("Account:  artemis-prod (4821-0937-1150)");
   expect(card.details).toContain(JSON.stringify({ InstanceId: ["i-1"] }, null, 2));
+  expect(card.content).toBe("InstanceId: i-1");
   expect(fake.sent).toHaveLength(1);
   expect(fake.sent[0]?.body).toBe("Action=TerminateInstances&Version=2016-11-15&InstanceId.1=i-1");
   expect(logs).toMatchObject([{ event: "write", fields: { action: "TerminateInstances" } }]);
@@ -377,4 +379,45 @@ test("aws_cost reads what was kept and never calls Cost Explorer", async () => {
   const { call, fake } = setup({});
   expect(await call("aws_cost", {})).toContain("has not read this one");
   expect(fake.sent).toHaveLength(0);
+});
+
+test("the confirm card splits plain language from technical detail", () => {
+  const request = {
+    method: "PUT",
+    url: "https://s3.eu-north-1.amazonaws.com/my-bucket",
+    region: "eu-north-1",
+  } as AwsRequest;
+  const card = confirmSpec(
+    {
+      service: "s3",
+      action: "CreateBucket",
+      region: "eu-north-1",
+      params: {
+        Bucket: "my-bucket",
+        Tags: [{ Key: "a" }, { Key: "b" }],
+        Config: { A: 1, B: 2 },
+        Note: "x".repeat(200),
+      },
+    },
+    "artemis-prod (4821-0937-1150)",
+    request,
+  );
+  // summary: one plain sentence, no ids, URL or JSON
+  expect(card.summary).toBe(
+    "Create bucket with s3, on my-bucket, in eu-north-1 for account artemis-prod (4821-0937-1150).",
+  );
+  expect(card.summary).not.toContain("https://");
+  expect(card.summary).not.toContain("{");
+  // content: readable Key: value lines, nested values summarised, long values cut
+  const lines = (card.content ?? "").split("\n");
+  expect(lines).toContain("Bucket: my-bucket");
+  expect(lines).toContain("Tags: 2 items");
+  expect(lines).toContain("Config: 2 fields");
+  expect(lines.find((l) => l.startsWith("Note: "))?.length).toBeLessThan(100);
+  expect(card.content).not.toContain("https://");
+  expect(card.content).not.toContain("4821");
+  // details: the technical part only
+  expect(card.details).toContain("PUT https://s3.eu-north-1.amazonaws.com/my-bucket");
+  expect(card.details).toContain("Account:  artemis-prod (4821-0937-1150)");
+  expect(card.details).toContain('"Config"');
 });
