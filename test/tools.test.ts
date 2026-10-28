@@ -415,7 +415,7 @@ test("the confirm card splits plain language from technical detail", () => {
   expect(lines).toContain("Config: 2 fields");
   expect(lines.find((l) => l.startsWith("Note: "))?.length).toBeLessThan(100);
   expect(card.content).not.toContain("https://");
-  expect(card.content).not.toContain("4821");
+  expect(card.content).not.toContain("1234-5678-9012");
   // details: the technical part only
   expect(card.details).toContain("PUT https://s3.eu-north-1.amazonaws.com/my-bucket");
   expect(card.details).toContain("Account:  example-prod (1234-5678-9012)");
