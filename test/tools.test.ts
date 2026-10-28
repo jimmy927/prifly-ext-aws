@@ -79,8 +79,8 @@ test("aws_whoami gives each key's account, state and identity", async () => {
   expect(rows).toHaveLength(2);
   expect(rows[0]).toMatchObject({
     connection: "aws-1",
-    account: "artemis-prod",
-    accountId: "4821-0937-1150",
+    account: "example-prod",
+    accountId: "1234-5678-9012",
     state: "ok",
     identity: "user/prifly",
   });
@@ -136,7 +136,7 @@ test("a read of a service off the table is built from its model, still without a
 
 test("aws_api takes a region and an account by id, account id or alias", async () => {
   const table = { "ec2:DescribeInstances": INSTANCES };
-  for (const account of ["aws-2", "2290-4471-8836", "229044718836", "Morpheus-Sandbox"]) {
+  for (const account of ["aws-2", "1111-2222-3333", "111122223333", "Example-Sandbox"]) {
     const { call, fake } = setup(table, { accounts: [KEY, SECOND] });
     await call("aws_api", {
       service: "ec2",
@@ -168,12 +168,12 @@ test("a write asks first: the card shows service, action, region, account and th
   const card = confirms[0] as ConfirmSpec;
   expect(card.title).toBe("AWS TerminateInstances");
   expect(card.summary).toBe(
-    "Terminate instances with ec2, on i-1, in eu-north-1 for account artemis-prod (4821-0937-1150).",
+    "Terminate instances with ec2, on i-1, in eu-north-1 for account example-prod (1234-5678-9012).",
   );
   expect(card.details).toContain("Service:  ec2");
   expect(card.details).toContain("Action:   TerminateInstances");
   expect(card.details).toContain("Region:   eu-north-1");
-  expect(card.details).toContain("Account:  artemis-prod (4821-0937-1150)");
+  expect(card.details).toContain("Account:  example-prod (1234-5678-9012)");
   expect(card.details).toContain(JSON.stringify({ InstanceId: ["i-1"] }, null, 2));
   expect(card.content).toBe("InstanceId: i-1");
   expect(fake.sent).toHaveLength(1);
@@ -399,12 +399,12 @@ test("the confirm card splits plain language from technical detail", () => {
         Note: "x".repeat(200),
       },
     },
-    "artemis-prod (4821-0937-1150)",
+    "example-prod (1234-5678-9012)",
     request,
   );
   // summary: one plain sentence, no ids, URL or JSON
   expect(card.summary).toBe(
-    "Create bucket with s3, on my-bucket, in eu-north-1 for account artemis-prod (4821-0937-1150).",
+    "Create bucket with s3, on my-bucket, in eu-north-1 for account example-prod (1234-5678-9012).",
   );
   expect(card.summary).not.toContain("https://");
   expect(card.summary).not.toContain("{");
@@ -418,6 +418,6 @@ test("the confirm card splits plain language from technical detail", () => {
   expect(card.content).not.toContain("4821");
   // details: the technical part only
   expect(card.details).toContain("PUT https://s3.eu-north-1.amazonaws.com/my-bucket");
-  expect(card.details).toContain("Account:  artemis-prod (4821-0937-1150)");
+  expect(card.details).toContain("Account:  example-prod (1234-5678-9012)");
   expect(card.details).toContain('"Config"');
 });

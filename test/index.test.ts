@@ -35,7 +35,7 @@ test("activate registers the tools, shows nothing and sets the status line from 
   const fake = fakeApi({ connections: aws.connections, folder });
   const stop = activate(fake.api);
   try {
-    expect(await statusOf(fake.statuses)).toBe("Connected · account 482109371150 (prifly)");
+    expect(await statusOf(fake.statuses)).toBe("Connected · account 123456789012 (prifly)");
     expect(fake.tools().map((tool) => tool.name)).toEqual([
       "aws_whoami",
       "aws_api",
@@ -55,7 +55,7 @@ test("the status line with two keys, no key, and a key that needs signing in", a
     folder,
   });
   const stopTwo = activate(two.api);
-  expect(await statusOf(two.statuses)).toBe("Connected · account 482109371150 (prifly) · 2 keys");
+  expect(await statusOf(two.statuses)).toBe("Connected · account 123456789012 (prifly) · 2 keys");
   stopTwo();
 
   const none = fakeApi({ connections: fakeAws({}, []).connections, folder });

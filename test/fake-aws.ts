@@ -11,14 +11,14 @@ import { fakeConnections } from "./fake-api";
 export const KEY: FakeAccount = {
   id: "aws-1",
   provider: "aws-keys",
-  account: "artemis-prod (4821-0937-1150)",
+  account: "example-prod (1234-5678-9012)",
   scopes: [],
 };
 
 export const SECOND: FakeAccount = {
   id: "aws-2",
   provider: "aws-keys",
-  account: "morpheus-sandbox (2290-4471-8836)",
+  account: "example-sandbox (1111-2222-3333)",
   scopes: [],
 };
 
@@ -43,7 +43,7 @@ export const jsonError = (code: string, message: string, status = 400): Response
   json({ __type: `com.amazon.coral#${code}`, message }, status);
 
 export const IDENTITY = xml(
-  "<GetCallerIdentityResponse><GetCallerIdentityResult><Arn>arn:aws:iam::482109371150:user/prifly</Arn><UserId>AIDAEXAMPLE</UserId><Account>482109371150</Account></GetCallerIdentityResult></GetCallerIdentityResponse>",
+  "<GetCallerIdentityResponse><GetCallerIdentityResult><Arn>arn:aws:iam::123456789012:user/prifly</Arn><UserId>AIDAEXAMPLE</UserId><Account>123456789012</Account></GetCallerIdentityResult></GetCallerIdentityResponse>",
 );
 
 /**

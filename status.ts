@@ -8,7 +8,7 @@ import { type Accounts, NEEDS_SIGN_IN } from "./accounts";
 /** How often the line is read again. */
 export const STATUS_MS = 15 * 60 * 1000;
 
-/** "Connected · account 482109371150 (prifly)", or what stands in the way. */
+/** "Connected · account 123456789012 (prifly)", or what stands in the way. */
 export async function statusLine(accounts: Accounts): Promise<string> {
   const all = accounts.list();
   const first = all[0];
