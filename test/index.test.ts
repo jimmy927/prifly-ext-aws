@@ -41,6 +41,7 @@ test("activate registers the tools, shows nothing and sets the status line from 
       "aws_api",
       "aws_api_docs",
       "aws_cost",
+      "aws_create_access_key_to_vault",
     ]);
     expect(fake.shown).toHaveLength(0);
     expect(fake.flags.size).toBe(0);

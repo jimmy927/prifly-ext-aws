@@ -1,8 +1,9 @@
 {
   "id": "aws",
   "name": "AWS",
-  "description": "Your AWS accounts in every prifly session: any AWS API action through the access key filed in Vault → Connections. Reads answer at once; every write shows a confirm card and runs only on your click. Calls that reveal a secret, and Cost Explorer, are refused; a daily cost reading stands in for the latter. prifly signs every call; the extension never sees a secret.",
-  "version": "0.3.0",
+  "description": "Your AWS accounts in every prifly session: any AWS API action through the access key filed in Vault → Connections. Reads answer at once; every write shows a confirm card and runs only on your click. Calls that reveal a secret, and Cost Explorer, are refused; a daily cost reading stands in for the latter. aws_create_access_key_to_vault makes a new IAM access key and files it straight into the Vault after one confirm card, so a session can use it with vault_run without ever seeing it. prifly signs every call; the extension never sees a secret.",
+  "version": "0.4.0",
+  "vaultFile": { "names": ["aws-*"] },
   "main": "index.ts",
   "prompt": "prompt.md",
   "connections": [

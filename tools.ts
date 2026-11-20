@@ -3,7 +3,7 @@
  * API action; reads at once, writes only after the reader confirms them on a
  * card, secret-revealing calls and Cost Explorer refused), `aws_api_docs`
  * (how to call an action, from its botocore model), `aws_whoami` and
- * `aws_cost`. Each answers text and never throws for what AWS said.
+ * `aws_cost`, and `aws_create_access_key_to_vault` (create-key.ts). Each answers text and never throws for what AWS said.
  */
 
 import type { ConfirmSpec, ExtensionTool } from "@prifly/extension-api";
@@ -11,8 +11,10 @@ import { type Accounts, failure, parseAccount } from "./accounts";
 import { judge, redact } from "./allowlist";
 import { type AwsRequest, AwsUsageError, DEFAULT_REGION, type Params } from "./aws";
 import type { CostEntry, CostStore } from "./cost";
+import { createKeyTool } from "./create-key";
 import { actionDocs, serviceDocs } from "./docs";
 import { operationOf } from "./model-request";
+import type { VaultFile } from "./vault-file";
 
 /** Longer replies are cut here, with a note of how to read on. */
 export const MAX_REPLY = 40_000;
@@ -108,6 +110,8 @@ export type Deps = {
   /** `api.confirm`; absent on a prifly too old to ask, where every write is not done. */
   confirm?: (spec: ConfirmSpec) => Promise<boolean>;
   log: (event: string, fields: Record<string, string | number | boolean | null>) => void;
+  /** `api.vault.file` where prifly has "vault-file-values"; undefined where it does not. */
+  file?: VaultFile | undefined;
 };
 
 const ACCOUNT_ARG = {
@@ -172,7 +176,7 @@ function apiTool(deps: Deps): ExtensionTool {
   return {
     name: "aws_api",
     description:
-      "Calls any AWS API action of any service with the reader's filed key (prifly signs it) and returns AWS's reply as text, cut to about 40 kB with the token to page on. Reads (Describe*, List*, Get*, Search*, Lookup*, BatchGet*, dynamodb Query/Scan, logs FilterLogEvents) run at once. Any other action is a write: the reader sees a confirm card with the service, action, region, account and params, and it runs only if they confirm; \"Not done: you cancelled\" means nothing was sent. Refused whatever the reader says: calls that reveal a secret (GetSecretValue, GetPasswordData, GetAuthorizationToken, sts other than GetCallerIdentity, ssm WithDecryption, ec2 userData, new access keys and key pairs, kms Decrypt/GenerateDataKey/GenerateDataKeyPair, sso-oidc CreateToken, cognito-idp InitiateAuth/AdminInitiateAuth/RespondToAuthChallenge) and Cost Explorer (use aws_cost). Lambda and ECS environment values come back redacted. Params by protocol: Query services (ec2, iam, rds, sns, cloudwatch, …) take flat or nested params (lists and objects are flattened); JSON services take the request body; REST services (s3, lambda, route53, …) take the action's members by name and each goes to the URI, query, header or body as the model says. For an action you do not know, call aws_api_docs first.",
+      "Calls any AWS API action of any service with the reader's filed key (prifly signs it) and returns AWS's reply as text, cut to about 40 kB with the token to page on. Reads (Describe*, List*, Get*, Search*, Lookup*, BatchGet*, dynamodb Query/Scan, logs FilterLogEvents) run at once. Any other action is a write: the reader sees a confirm card with the service, action, region, account and params, and it runs only if they confirm; \"Not done: you cancelled\" means nothing was sent. Refused whatever the reader says: calls that reveal a secret (GetSecretValue, GetPasswordData, GetAuthorizationToken, sts other than GetCallerIdentity, ssm WithDecryption, ec2 userData, new access keys (use aws_create_access_key_to_vault, which files the key into the vault without showing it to you) and key pairs, kms Decrypt/GenerateDataKey/GenerateDataKeyPair, sso-oidc CreateToken, cognito-idp InitiateAuth/AdminInitiateAuth/RespondToAuthChallenge) and Cost Explorer (use aws_cost). Lambda and ECS environment values come back redacted. Params by protocol: Query services (ec2, iam, rds, sns, cloudwatch, …) take flat or nested params (lists and objects are flattened); JSON services take the request body; REST services (s3, lambda, route53, …) take the action's members by name and each goes to the URI, query, header or body as the model says. For an action you do not know, call aws_api_docs first.",
     inputSchema: {
       type: "object",
       properties: {
@@ -410,5 +414,11 @@ function docsTool(deps: Deps): ExtensionTool {
 }
 
 export function awsTools(deps: Deps): ExtensionTool[] {
-  return [whoamiTool(deps), apiTool(deps), docsTool(deps), costTool(deps)];
+  return [
+    whoamiTool(deps),
+    apiTool(deps),
+    docsTool(deps),
+    costTool(deps),
+    createKeyTool({ accounts: deps.accounts, file: deps.file, log: deps.log }),
+  ];
 }

@@ -64,12 +64,13 @@ function setup(table: Record<string, Canned>, options: Options = {}) {
 
 const INSTANCES = xml("<DescribeInstancesResponse><reservationSet/></DescribeInstancesResponse>");
 
-test("the tools are aws_whoami, aws_api, aws_api_docs and aws_cost", () => {
+test("the tools are aws_whoami, aws_api, aws_api_docs, aws_cost and the key filer", () => {
   expect(setup({}).tools.map((tool) => tool.name)).toEqual([
     "aws_whoami",
     "aws_api",
     "aws_api_docs",
     "aws_cost",
+    "aws_create_access_key_to_vault",
   ]);
 });
 

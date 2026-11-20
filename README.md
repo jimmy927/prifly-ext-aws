@@ -17,6 +17,7 @@ and nothing is sent.
   - `aws_api_docs { service, action? }`: how to call an action, read from its botocore service model. Without `action`: the protocol, endpoint prefix, API version and the operation names. With it: how `aws_api` sends it (method and URI, or target), whether it is a read, a write or refused, its required params, and its input and output shapes a few levels deep with trimmed docs, capped at about 40 kB.
   - `aws_whoami`: the keys filed, whether each still works, and the IAM identity it is (STS `GetCallerIdentity`, kept five minutes).
   - `aws_cost { account? }`: the cached daily Cost Explorer reading. Never a live call.
+  - `aws_create_access_key_to_vault { userName, vaultEntry, account?, why }`: after the reader confirms one vault filing card, creates an IAM access key for `userName` and files it as the vault entry `vaultEntry` (`aws-*`, kind other, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`), for `vault_run`. Needs a prifly with "vault-file-values"; refused when the user already has 2 keys. The secret never appears in an answer, a log or an error; a key left behind by a failed filing is deleted again.
 - **One status line** in Settings → Extensions: `Connected · account <id> (<user>)` for the first key (with the number of keys when there are more), or what stands in the way (no key filed, the key needs signing in). Read again every 15 minutes.
 - No board, launcher, flag or status-bar item.
 
@@ -59,6 +60,7 @@ The types come from `@prifly/extension-api`, at a tag of `jimmy927/prifly-extens
 | `model-request.ts` | Any request from its model (Query, EC2, JSON, rest-json, rest-xml) |
 | `allowlist.ts` | Pure: read, write or refused, and the redaction of replies |
 | `tools.ts` | `aws_whoami`, `aws_api`, `aws_api_docs`, `aws_cost`; the confirm card, trimming and paging |
+| `create-key.ts`, `vault-file.ts` | `aws_create_access_key_to_vault`; the local types of prifly's `api.vault.file` |
 | `docs.ts` | `aws_api_docs`'s text from a model |
 | `accounts.ts` | The filed keys, which one a call means, identity |
 | `status.ts` | The Settings → Extensions line |

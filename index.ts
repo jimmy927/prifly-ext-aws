@@ -13,6 +13,7 @@ import { CostStore } from "./cost";
 import { Models } from "./models";
 import { STATUS_MS, statusLine } from "./status";
 import { awsTools } from "./tools";
+import { vaultFileOf } from "./vault-file";
 
 const COST_CHECK_MS = 60 * 60 * 1000;
 
@@ -33,6 +34,7 @@ export function activate(api: ExtensionApi): () => void {
       accounts,
       cost,
       ...(confirm === undefined ? {} : { confirm }),
+      file: vaultFileOf(api),
       log: (event, fields) => api.log(event, fields),
     }),
   );

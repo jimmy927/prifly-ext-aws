@@ -87,6 +87,9 @@ function secretReason(service: string, action: string, params: Params): string |
   if (/^(Get|BatchGet)/i.test(action) && SECRET_NAME.test(action)) {
     return `${service} ${action} returns a secret, password, token or key.`;
   }
+  if (`${service}:${action}`.toLowerCase() === "iam:createaccesskey") {
+    return "iam CreateAccessKey answers with a secret access key. To give a command or service its own IAM key, use aws_create_access_key_to_vault: the reader confirms one card and the key goes straight into the vault, then use it with vault_run.";
+  }
   if (SECRET_CALLS.has(`${service}:${action}`.toLowerCase())) {
     return `${service} ${action} answers with a secret (an access key, a private key, plaintext key material or an auth token).`;
   }
