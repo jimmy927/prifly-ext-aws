@@ -261,6 +261,39 @@ test("failed with produced false and no key made leaves nothing behind", async (
   expect(actions()).toEqual(["ListAccessKeys"]);
 });
 
+test("filing runs produce, then throws: the key is deleted and named, nothing leaks", async () => {
+  const { call, logs, actions } = setup(GOOD, async (_n, request) => {
+    await request.produce();
+    throw new Error(`host broke ${SECRET}`);
+  });
+  const answer = await call({});
+  expect(actions()).toEqual(["ListAccessKeys", "CreateAccessKey", "DeleteAccessKey"]);
+  expect(answer).toContain("AKIA…ABCD");
+  expect(answer).toContain("was deleted again");
+  expectNoSecret([answer], logs);
+});
+
+test("declined after produce ran: the key is deleted and the answer names it", async () => {
+  const { call, actions } = setup(GOOD, async (_n, request) => {
+    await request.produce();
+    return { outcome: "declined" };
+  });
+  const answer = await call({});
+  expect(actions()).toEqual(["ListAccessKeys", "CreateAccessKey", "DeleteAccessKey"]);
+  expect(answer).toContain("AKIA…ABCD");
+  expect(answer).not.toContain("No key was created");
+});
+
+test("a second produce call is refused and makes no second key", async () => {
+  const { call, actions } = setup(GOOD, async (_n, request) => {
+    await request.produce();
+    await request.produce().catch(() => undefined);
+    return { outcome: "accepted", level: 1 };
+  });
+  await call({});
+  expect(actions().filter((each) => each === "CreateAccessKey")).toHaveLength(1);
+});
+
 test("a scan over every scenario: no answer and no log field holds the secret", async () => {
   const scenarios: Filing[] = [
     accepting,

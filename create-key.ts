@@ -113,6 +113,7 @@ async function createKey(deps: CreateKeyDeps, args: Record<string, unknown>): Pr
   let createdKeyId: string | null = null;
   let deletedInProduce = false;
   const produce = async (): Promise<Record<string, string>> => {
+    if (createdKeyId !== null) throw new Error("produce runs once.");
     const made = await iam(deps, id, "CreateAccessKey", { UserName: userName });
     if (!made.ok) throw new Error(made.message);
     const keyId = tag(made.text, "AccessKeyId");
@@ -126,23 +127,35 @@ async function createKey(deps: CreateKeyDeps, args: Record<string, unknown>): Pr
     return { AWS_ACCESS_KEY_ID: keyId, AWS_SECRET_ACCESS_KEY: secret };
   };
 
-  const result = await file(vaultEntry, {
-    kind: "other",
-    variables: VARIABLES,
-    produce,
-    creates: `an IAM access key for user ${userName} in account ${account}`,
-    why,
-  });
+  let result: VaultFileResult;
+  try {
+    result = await file(vaultEntry, {
+      kind: "other",
+      variables: VARIABLES,
+      produce,
+      creates: `an IAM access key for user ${userName} in account ${account}`,
+      why,
+    });
+  } catch {
+    // The error's text is never used: it could carry what produce threw.
+    result = { outcome: "failed", message: "", produced: false };
+  }
   deps.log("create_key", { outcome: result.outcome, entry: vaultEntry, user: userName, account });
-  if (result.outcome !== "failed") return answerOf(result, request, createdKeyId);
-  // `result.message` is never passed on: it could carry what produce threw.
+  if (result.outcome === "accepted") return answerOf(result, request, createdKeyId);
   const key = createdKeyId;
-  if (key === null) return "Not done: nothing was filed. No key was left behind.";
+  if (key === null) {
+    // `result.message` of a failure is never passed on: it could carry what produce threw.
+    return result.outcome === "failed"
+      ? "Not done: nothing was filed. No key was left behind."
+      : answerOf(result, request, null);
+  }
+  // A key exists although nothing was filed: delete it, whatever the outcome says.
   const deleted = deletedInProduce || (await deleteKey(deps, id, userName, key));
   deps.log("create_key_cleanup", { deleted, entry: vaultEntry, user: userName });
-  const lead = result.produced
-    ? "Not done: the vault refused the new key, so nothing was filed."
-    : "Not done: nothing was filed.";
+  const lead =
+    result.outcome === "failed" && result.produced
+      ? "Not done: the vault refused the new key, so nothing was filed."
+      : "Not done: nothing was filed.";
   return deleted
     ? `${lead} The key ${maskKeyId(key)} of ${userName} was deleted again.`
     : `${lead} The key ${maskKeyId(key)} of ${userName} could NOT be deleted: the reader must delete it by hand in IAM.`;

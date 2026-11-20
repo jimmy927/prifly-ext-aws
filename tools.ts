@@ -3,7 +3,8 @@
  * API action; reads at once, writes only after the reader confirms them on a
  * card, secret-revealing calls and Cost Explorer refused), `aws_api_docs`
  * (how to call an action, from its botocore model), `aws_whoami` and
- * `aws_cost`, and `aws_create_access_key_to_vault` (create-key.ts). Each answers text and never throws for what AWS said.
+ * `aws_cost`, and `aws_create_access_key_to_vault` (create-key.ts). Each
+ * answers text and never throws for what AWS said.
  */
 
 import type { ConfirmSpec, ExtensionTool } from "@prifly/extension-api";
